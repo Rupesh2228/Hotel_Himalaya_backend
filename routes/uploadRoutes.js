@@ -1,37 +1,53 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
+const cloudinary = require('cloudinary').v2;
 
-const uploadsDir = path.join(__dirname, '..', 'uploads');
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const cleanName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    cb(null, `${timestamp}-${cleanName}`);
-  },
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// Use memory storage — no files saved to disk
+const storage = multer.memoryStorage();
 
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image uploads are allowed')); 
+      return cb(new Error('Only image uploads are allowed'));
     }
     cb(null, true);
   },
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
 });
 
 const router = express.Router();
 
-router.post('/', upload.single('image'), (req, res) => {
+router.post('/', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No image file provided' });
   }
 
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-  res.status(201).json({ url: imageUrl });
+  try {
+    // Upload buffer to Cloudinary
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'hotel_himalayan' },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.status(201).json({ url: result.secure_url });
+  } catch (err) {
+    console.error('Cloudinary upload error:', err);
+    res.status(500).json({ error: 'Image upload failed: ' + err.message });
+  }
 });
 
 module.exports = router;
