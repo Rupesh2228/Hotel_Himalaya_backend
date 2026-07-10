@@ -3,12 +3,12 @@ const mongoose = require('mongoose');
 
 const MONGO_URI = process.env.MONGO_URI;
 
-if (!MONGO_URI) {
-  console.error('ERROR: MONGO_URI not set in .env file');
-  process.exit(1);
-}
-
 const connectDB = async () => {
+  if (!MONGO_URI) {
+    console.error('WARNING: MONGO_URI not set; continuing without database connection');
+    return;
+  }
+
   let attempt = 1;
   const maxRetries = Infinity; // Retry forever
   const retryDelays = [2000, 5000, 10000, 15000];

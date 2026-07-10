@@ -31,16 +31,28 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Quick health endpoint
+// Root and health endpoints should stay available while the database is connecting.
+app.get('/', (req, res) => {
+  const state = mongoose.connection.readyState;
+  res.json({
+    status: state === 1 ? 'ok' : 'starting',
+    message: 'Hotel Himalaya API is running',
+    dbState: state,
+  });
+});
+
 app.get('/health', (req, res) => {
   const state = mongoose.connection.readyState; // 0 disconnected, 1 connected, 2 connecting, 3 disconnecting
   res.json({ status: state === 1 ? 'ok' : 'db_connecting', state });
 });
 
-// Fail fast middleware: if DB not connected, return 503 immediately
+// Only protect API routes that need a live database connection.
 app.use((req, res, next) => {
-  if (mongoose.connection.readyState !== 1) {
-    return res.status(503).json({ error: 'Service temporarily unavailable (database not connected)' });
+  if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      error: 'Service temporarily unavailable (database not connected)',
+      dbState: mongoose.connection.readyState,
+    });
   }
   next();
 });
