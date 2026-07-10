@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const Room = require("./models/Room");
 const Attraction = require("./models/Attraction");
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
 const seedData = async () => {
   try {

@@ -4,6 +4,21 @@ const GalleryImage = require('../models/GalleryImage');
 const Room = require('../models/Room');
 const Attraction = require('../models/Attraction');
 
+const normalizePublicUrl = (req, value) => {
+  if (!value || typeof value !== 'string') return value;
+  try {
+    const parsed = new URL(value);
+    if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && parsed.pathname.startsWith('/uploads/')) {
+      return `${req.protocol}://${req.get('host')}${parsed.pathname}`;
+    }
+  } catch {
+    if (value.startsWith('/uploads/')) {
+      return `${req.protocol}://${req.get('host')}${value}`;
+    }
+  }
+  return value;
+};
+
 // Get all users (for admin)
 const getUsers = async (req, res) => {
   try {
@@ -21,7 +36,7 @@ const addGalleryImage = async (req, res) => {
     const { url, title, description } = req.body;
     if (!url) return res.status(400).json({ error: 'Image URL is required' });
 
-    const image = await GalleryImage.create({ url, title, description });
+    const image = await GalleryImage.create({ url: normalizePublicUrl(req, url), title, description });
     res.status(201).json(image);
   } catch (err) {
     console.error('addGalleryImage error:', err);
@@ -32,8 +47,11 @@ const addGalleryImage = async (req, res) => {
 // Public: get all gallery images
 const getGalleryImages = async (req, res) => {
   try {
-    const images = await GalleryImage.find().sort({ createdAt: -1 });
-    res.json(images);
+    const images = await GalleryImage.find().sort({ createdAt: -1 }).lean();
+    res.json(images.map((image) => ({
+      ...image,
+      url: normalizePublicUrl(req, image.url),
+    })));
   } catch (err) {
     console.error('getGalleryImages error:', err);
     res.status(500).json({ error: 'Failed to fetch gallery images' });

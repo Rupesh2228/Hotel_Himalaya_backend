@@ -1,11 +1,11 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 
 const connectDB = async () => {
   if (!MONGO_URI) {
-    console.error('WARNING: MONGO_URI not set; continuing without database connection');
+    console.error('WARNING: MONGO_URI/MONGODB_URI not set; continuing without database connection');
     return;
   }
 
