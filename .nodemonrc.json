@@ -1,0 +1,9 @@
+{
+  "watch": ["app.js", "controllers", "middleware", "models", "routes", "services"],
+  "ignore": ["node_modules", "uploads"],
+  "ext": "js",
+  "delay": "500",
+  "events": {
+    "restart": "clear"
+  }
+}
