@@ -75,6 +75,18 @@ exports.getMessages = async (req, res) => {
   }
 };
 
+exports.markMessageRead = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const updated = await Message.findByIdAndUpdate(id, { isRead: true }, { new: true });
+    if (!updated) return res.status(404).json({ error: 'Message not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('markMessageRead error:', error);
+    res.status(500).json({ error: 'Failed to mark message as read' });
+  }
+};
+
 exports.deleteMessage = async (req, res) => {
   try {
     const { id } = req.params;

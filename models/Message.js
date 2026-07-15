@@ -5,6 +5,7 @@ const messageSchema = new mongoose.Schema({
   email: { type: String, required: true },
   phone: { type: String, default: '' },
   message: { type: String, required: true },
+  isRead: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 
