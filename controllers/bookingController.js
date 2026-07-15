@@ -74,8 +74,26 @@ const findBookingByIdentifier = async (identifier) => {
   });
 };
 
+const deleteExpiredBookings = async () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const allBookings = await Booking.find({});
+  const expiredIds = allBookings
+    .filter((booking) => {
+      const checkOutDate = parseDate(booking.checkOut);
+      return checkOutDate && checkOutDate < today;
+    })
+    .map((booking) => booking._id);
+
+  if (expiredIds.length > 0) {
+    await Booking.deleteMany({ _id: { $in: expiredIds } });
+  }
+};
+
 exports.getBookings = async (req, res) => {
   try {
+    await deleteExpiredBookings();
+
     const { bookedBy, bookedByEmail } = req.query;
     const filter = bookedByEmail
       ? { bookedByEmail }
