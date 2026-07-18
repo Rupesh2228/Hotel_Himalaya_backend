@@ -1,5 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { body, validationResult } = require("express-validator");
 const User = require("../models/User");
 const { sendEmail } = require("../services/emailService");
 const { OAuth2Client } = require("google-auth-library");
@@ -22,9 +23,14 @@ const generateToken = (id) => {
  */
 const signup = async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const { name, email, password } = req.body;
 
-    // Validation
+    // Additional business validation
     if (!name || !email || !password) {
       return res.status(400).json({ error: "Please enter all fields" });
     }
@@ -79,6 +85,13 @@ const signup = async (req, res) => {
  * @route POST /api/auth/verify-signup-otp
  * @access Public
  */
+const signupValidationRules = [
+  body("name").trim().notEmpty().withMessage("Name is required"),
+  body("email").isEmail().withMessage("Please provide a valid email")
+    .normalizeEmail(),
+  body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters long"),
+];
+
 const verifySignupOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;

@@ -1,6 +1,10 @@
 require("dotenv").config();
 const express = require("express");
+const helmet = require("helmet");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const mongoSanitize = require("express-mongo-sanitize");
+const hpp = require("hpp");
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
@@ -27,9 +31,20 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use("/uploads", express.static(uploadsDir));
 
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(helmet());
 app.use(cors());
+app.use(limiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(mongoSanitize());
+app.use(hpp());
 
 // Root and health endpoints should stay available while the database is connecting.
 app.get('/', (req, res) => {
