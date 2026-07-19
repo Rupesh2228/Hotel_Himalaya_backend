@@ -38,7 +38,10 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 app.use(limiter);
 app.use(cors({
   origin: true,
