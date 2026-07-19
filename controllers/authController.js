@@ -28,12 +28,14 @@ const signup = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, email, password } = req.body;
+    const { name, email: rawEmail, password } = req.body;
 
     // Additional business validation
-    if (!name || !email || !password) {
+    if (!name || !rawEmail || !password) {
       return res.status(400).json({ error: "Please enter all fields" });
     }
+    
+    const email = String(rawEmail).toLowerCase();
 
     if (email.toLowerCase() === restrictedAdminEmail) {
       return res.status(400).json({ error: "Registration with this email is restricted." });
@@ -93,9 +95,10 @@ const signupValidationRules = [
 
 const verifySignupOTP = async (req, res) => {
   try {
-    const { email, otp } = req.body;
-    if (!email || !otp) return res.status(400).json({ error: "Email and OTP are required" });
+    const { email: rawEmail, otp } = req.body;
+    if (!rawEmail || !otp) return res.status(400).json({ error: "Email and OTP are required" });
 
+    const email = String(rawEmail).toLowerCase();
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: "Invalid email or OTP" });
 
@@ -133,9 +136,10 @@ const verifySignupOTP = async (req, res) => {
  */
 const requestPasswordReset = async (req, res) => {
   try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: "Email is required" });
+    const { email: rawEmail } = req.body;
+    if (!rawEmail) return res.status(400).json({ error: "Email is required" });
 
+    const email = String(rawEmail).toLowerCase();
     const user = await User.findOne({ email });
     if (!user) return res.status(200).json({ message: "If that email exists, an OTP was sent" });
 
@@ -162,9 +166,10 @@ const requestPasswordReset = async (req, res) => {
  */
 const verifyPasswordReset = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) return res.status(400).json({ error: "Email, OTP and newPassword are required" });
+    const { email: rawEmail, otp, newPassword } = req.body;
+    if (!rawEmail || !otp || !newPassword) return res.status(400).json({ error: "Email, OTP and newPassword are required" });
 
+    const email = String(rawEmail).toLowerCase();
     const user = await User.findOne({ email });
     if (!user || !user.resetPasswordOTP || user.resetPasswordOTP !== otp) {
       return res.status(400).json({ error: "Invalid OTP or email" });
