@@ -41,7 +41,7 @@ const limiter = rateLimit({
 app.use(helmet());
 app.use(limiter);
 app.use(cors({
-  origin: "https://yourfrontend.vercel.app",
+  origin: true,
   credentials: true,
 }));
 app.use(express.json());
