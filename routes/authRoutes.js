@@ -14,7 +14,7 @@ const { protect } = require("../middleware/authMiddleware");
 const router = express.Router();
 
 // Public routes
-router.post("/signup", signupValidationRules, signup);
+router.post("/signup", ...signupValidationRules, signup);
 router.post("/verify-signup-otp", verifySignupOTP);
 router.post("/login", login);
 router.post("/google", googleLogin);

@@ -12,7 +12,7 @@ const restrictedAdminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMI
 // Helper function to generate JWT
 const generateToken = (id) => {
   return jwt.sign({ id }, JWT_SECRET, {
-    expiresIn: "30d",
+    expiresIn: "7d",
   });
 };
 
@@ -87,9 +87,8 @@ const signup = async (req, res) => {
  */
 const signupValidationRules = [
   body("name").trim().notEmpty().withMessage("Name is required"),
-  body("email").isEmail().withMessage("Please provide a valid email")
-    .normalizeEmail(),
-  body("password").isLength({ min: 6 }).withMessage("Password must be at least 6 characters long"),
+  body("email").isEmail(),
+  body("password").isLength({ min: 8 }),
 ];
 
 const verifySignupOTP = async (req, res) => {
@@ -113,7 +112,14 @@ const verifySignupOTP = async (req, res) => {
     user.verificationOTPExpires = undefined;
     await user.save();
 
-    return res.json({ token: generateToken(user._id), user: { id: user._id, name: user.name, email: user.email, role: user.role, provider: user.provider || 'local', avatar: user.avatar } });
+    const token = generateToken(user._id);
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+    });
+
+    return res.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role, provider: user.provider || 'local', avatar: user.avatar } });
   } catch (err) {
     console.error('verifySignupOTP error:', err);
     res.status(500).json({ error: 'Server error verifying OTP' });
@@ -284,8 +290,14 @@ const googleLogin = async (req, res) => {
       await user.save();
     }
 
+    const token = generateToken(user._id);
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+    });
+
     res.json({
-      token: generateToken(user._id),
       user: {
         id: user._id,
         name: user.name,
@@ -325,6 +337,7 @@ const getMe = async (req, res) => {
 
 module.exports = {
   signup,
+  signupValidationRules,
   login,
   googleLogin,
   getMe,

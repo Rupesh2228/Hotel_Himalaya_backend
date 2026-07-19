@@ -39,8 +39,11 @@ const limiter = rateLimit({
 });
 
 app.use(helmet());
-app.use(cors());
 app.use(limiter);
+app.use(cors({
+  origin: "https://yourfrontend.vercel.app",
+  credentials: true,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(mongoSanitize());
