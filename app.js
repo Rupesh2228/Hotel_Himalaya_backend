@@ -49,7 +49,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(mongoSanitize());
+
 app.use(hpp());
 
 // Root and health endpoints should stay available while the database is connecting.
