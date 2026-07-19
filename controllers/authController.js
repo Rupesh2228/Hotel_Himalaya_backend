@@ -122,7 +122,7 @@ const verifySignupOTP = async (req, res) => {
       sameSite: "strict",
     });
 
-    return res.json({ user: { id: user._id, name: user.name, email: user.email, role: user.role, provider: user.provider || 'local', avatar: user.avatar } });
+    return res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, provider: user.provider || 'local', avatar: user.avatar } });
   } catch (err) {
     console.error('verifySignupOTP error:', err);
     res.status(500).json({ error: 'Server error verifying OTP' });
@@ -303,6 +303,7 @@ const googleLogin = async (req, res) => {
     });
 
     res.json({
+      token,
       user: {
         id: user._id,
         name: user.name,
