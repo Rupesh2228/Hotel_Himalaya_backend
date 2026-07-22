@@ -1,113 +1,96 @@
 const nodemailer = require('nodemailer');
-const fs = require('fs');
-const path = require('path');
-const dotenv = require('dotenv');
 
-let transporter = null;
+// ─── Create transporter once at startup using environment variables ────────────
+// On deployed servers (Render, Heroku, etc.) env vars are injected at process
+// startup — there is no .env file on disk, so we read directly from process.env.
+
+let _transporter = null;
+let _transporterEmail = null;
 
 const getTransporter = () => {
-  // Dynamically parse .env to pick up changes without needing a server restart
-  const envPath = path.resolve(process.cwd(), '.env');
-  let email = process.env.SMTP_EMAIL;
-  let pass = process.env.SMTP_PASSWORD;
+  const email = (process.env.SMTP_EMAIL || '').trim();
+  const pass  = (process.env.SMTP_PASSWORD || '').trim();
 
-  if (fs.existsSync(envPath)) {
-    const parsedEnv = dotenv.parse(fs.readFileSync(envPath));
-    if (parsedEnv.SMTP_EMAIL) email = parsedEnv.SMTP_EMAIL;
-    if (parsedEnv.SMTP_PASSWORD) pass = parsedEnv.SMTP_PASSWORD;
+  if (!email || !pass) {
+    console.warn('[EMAIL] SMTP_EMAIL or SMTP_PASSWORD is not set in environment variables.');
+    return null;
   }
-  
-  // Re-create transporter if credentials changed (useful for hot-reloads)
-  if (email && pass) {
-    if (!transporter || transporter.options.auth.user !== email) {
-      transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-          user: email,
-          pass: pass,
-        },
-      });
-    }
+
+  // Re-create only if credentials have changed (supports hot config updates locally)
+  if (_transporter && _transporterEmail === email) {
+    return _transporter;
   }
-  return transporter;
+
+  _transporterEmail = email;
+  _transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: email,
+      pass: pass,
+    },
+  });
+
+  console.log(`[EMAIL] Transporter initialised for ${email}`);
+  return _transporter;
 };
 
 /**
- * Send an email alert to the admin email only.
- * Fire-and-forget — logs errors but never throws.
+ * Send an email to any recipient.
+ * Returns the Nodemailer info object on success, or null on failure.
  *
- * @param {string} subject - Email subject line
- * @param {string} body - Plain text body
- * @param {string} [htmlBody] - Optional HTML body for rich formatting
+ * @param {string} to        - Recipient email address
+ * @param {string} subject   - Email subject line
+ * @param {string} text      - Plain-text body
+ * @param {string} [html]    - Optional HTML body
  */
-const sendAdminEmail = async (subject, body, htmlBody) => {
+const sendEmail = async (to, subject, text, html) => {
   try {
     const mailer = getTransporter();
-    
-    // Dynamically parse ADMIN_EMAIL from .env if needed
-    const envPath = path.resolve(process.cwd(), '.env');
-    let adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || 'admin@example.com').toLowerCase();
-    if (fs.existsSync(envPath)) {
-      const parsedEnv = dotenv.parse(fs.readFileSync(envPath));
-      if (parsedEnv.ADMIN_EMAIL) adminEmail = parsedEnv.ADMIN_EMAIL.toLowerCase();
-    }
-    
+
     if (!mailer) {
-      console.warn('[EMAIL] Not configured — skipping email. Check SMTP_EMAIL and SMTP_PASSWORD in .env');
-      return null;
-    }
-    
-    const senderEmail = mailer.options.auth.user;
-
-    const mailOptions = {
-      from: `"Hotel Himalaya INN Khona Khona INN Khona" <${senderEmail}>`,
-      to: adminEmail,
-      subject: subject,
-      text: body,
-    };
-
-    if (htmlBody) {
-      mailOptions.html = htmlBody;
-    }
-
-    const info = await mailer.sendMail(mailOptions);
-    console.log(`[EMAIL] Admin alert sent successfully. ID: ${info.messageId}`);
-    return info;
-  } catch (error) {
-    console.error('[EMAIL] Failed to send admin alert:', error.message);
-    return null;
-  }
-};
-
-const sendEmail = async (to, subject, body, htmlBody) => {
-  try {
-    const mailer = getTransporter();
-    
-    if (!mailer) {
-      console.warn('[EMAIL] Not configured — skipping email. Check SMTP_EMAIL and SMTP_PASSWORD in .env');
+      console.warn(`[EMAIL] Skipping email to ${to} — transporter not configured.`);
       return null;
     }
 
-    const senderEmail = mailer.options.auth.user;
+    const senderEmail = (process.env.SMTP_EMAIL || '').trim();
 
     const mailOptions = {
-      from: `"Hotel Himalaya INN Khona Khona INN Khona" <${senderEmail}>`,
-      to: to,
-      subject: subject,
-      text: body,
+      from: `"Hotel Himalaya INN" <${senderEmail}>`,
+      to,
+      subject,
+      text,
     };
 
-    if (htmlBody) {
-      mailOptions.html = htmlBody;
+    if (html) {
+      mailOptions.html = html;
     }
 
     const info = await mailer.sendMail(mailOptions);
-    console.log(`[EMAIL] Email to ${to} sent successfully. ID: ${info.messageId}`);
+    console.log(`[EMAIL] Sent to ${to} — Message ID: ${info.messageId}`);
     return info;
   } catch (error) {
+    // Log full error so it appears in server/Render logs
     console.error(`[EMAIL] Failed to send email to ${to}:`, error.message);
+    console.error('[EMAIL] Full error:', error);
     return null;
   }
 };
 
-module.exports = { sendAdminEmail, sendEmail };
+/**
+ * Send an email alert to the admin only.
+ *
+ * @param {string} subject   - Email subject line
+ * @param {string} text      - Plain-text body
+ * @param {string} [html]    - Optional HTML body
+ */
+const sendAdminEmail = async (subject, text, html) => {
+  const adminEmail = (
+    process.env.ADMIN_EMAIL ||
+    process.env.GOOGLE_ADMIN_EMAIL ||
+    'admin@example.com'
+  ).trim().toLowerCase();
+
+  return sendEmail(adminEmail, subject, text, html);
+};
+
+module.exports = { sendEmail, sendAdminEmail };
