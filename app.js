@@ -3,7 +3,6 @@ const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
-const mongoSanitize = require("express-mongo-sanitize");
 const hpp = require("hpp");
 const mongoose = require("mongoose");
 const path = require("path");
@@ -50,7 +49,6 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(mongoSanitize());
 
 app.use(hpp());
 
