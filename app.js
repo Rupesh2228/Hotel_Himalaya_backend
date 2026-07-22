@@ -21,6 +21,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const eventRoutes = require("./routes/eventRoutes");
 const notificationRoutes = require('./routes/notificationRoutes');
 const tourRoutes = require('./routes/tourRoutes');
+const pastEventRoutes = require("./routes/pastEventRoutes");
 
 const app = express();
 
@@ -91,6 +92,7 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/events", eventRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/tours', tourRoutes);
+app.use("/api/past-events", pastEventRoutes);
 
 
 app.use((req, res) => {
