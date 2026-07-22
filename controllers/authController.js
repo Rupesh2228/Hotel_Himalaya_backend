@@ -89,7 +89,10 @@ const signup = async (req, res) => {
       const subject = "Your verification code";
       const body = `Your verification code is ${otp}. It will expire in 10 minutes.`;
       const emailResult = await sendEmail(user.email, subject, body, `<p>${body}</p>`);
-      if (!emailResult) console.error(`[AUTH] Failed to send signup OTP email to ${user.email}`);
+      if (!emailResult) {
+        console.error(`[AUTH] Failed to send signup OTP email to ${user.email}`);
+        return res.status(500).json({ error: "Failed to send verification email. Please check server configuration." });
+      }
 
       return res.status(201).json({ message: "Verification OTP sent to email" });
     } else {
@@ -170,7 +173,10 @@ const requestPasswordReset = async (req, res) => {
     const subject = "Your password reset code";
     const body = `Your password reset code is ${otp}. It will expire in 10 minutes.`;
     const emailResult = await sendEmail(user.email, subject, body, `<p>${body}</p>`);
-    if (!emailResult) console.error(`[AUTH] Failed to send password reset OTP email to ${user.email}`);
+    if (!emailResult) {
+      console.error(`[AUTH] Failed to send password reset OTP email to ${user.email}`);
+      return res.status(500).json({ error: "Failed to send reset email. Please check server configuration." });
+    }
 
     return res.json({ message: "If that email exists, an OTP was sent" });
   } catch (err) {
