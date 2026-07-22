@@ -137,8 +137,8 @@ const verifySignupOTP = async (req, res) => {
     const token = generateToken(user._id);
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: process.env.NODE_ENV !== 'development' ? 'none' : 'lax',
     });
 
     return res.json({ token, user: { id: user._id, name: user.name, email: user.email, role: user.role, provider: user.provider || 'local', avatar: user.avatar } });
@@ -246,6 +246,11 @@ const login = async (req, res) => {
       return res.status(400).json({ error: "Invalid credentials" });
     }
 
+    // Block login for unverified local accounts
+    if (!user.isVerified) {
+      return res.status(400).json({ error: "Please verify your email first. Check your inbox for the OTP." });
+    }
+
     res.json({
       token: generateToken(user._id),
       user: {
@@ -305,6 +310,7 @@ const googleLogin = async (req, res) => {
         avatar: picture,
         role: "user",
         provider: "google",
+        isVerified: true,
       });
     } else {
       // Preserve existing user roles for returning users.
@@ -318,8 +324,8 @@ const googleLogin = async (req, res) => {
     const token = generateToken(user._id);
     res.cookie("token", token, {
       httpOnly: true,
-      secure: true,
-      sameSite: "strict",
+      secure: process.env.NODE_ENV !== 'development',
+      sameSite: process.env.NODE_ENV !== 'development' ? 'none' : 'lax',
     });
 
     res.json({

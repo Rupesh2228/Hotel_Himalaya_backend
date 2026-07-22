@@ -50,6 +50,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(mongoSanitize());
 
 app.use(hpp());
 
@@ -128,10 +129,19 @@ connectDB().then(async () => {
         email: adminEmail,
         password: hashedPassword,
         role: "admin",
+        provider: "local",
+        isVerified: true,
       });
       console.log("✓ Admin user created");
     } else {
-      console.log("✓ Admin user exists");
+      // Ensure existing admin has isVerified=true (migration)
+      if (!adminExists.isVerified) {
+        adminExists.isVerified = true;
+        await adminExists.save();
+        console.log("✓ Admin user verified (migrated)");
+      } else {
+        console.log("✓ Admin user exists");
+      }
     }
   } catch (err) {
     console.error("⚠ Admin seeding error:", err.message);
