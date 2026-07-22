@@ -25,7 +25,7 @@ const signup = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ error: errors.array()[0].msg });
     }
 
     const { name, email: rawEmail, password } = req.body;
@@ -42,8 +42,25 @@ const signup = async (req, res) => {
     }
 
     // Check if user exists
-    const userExists = await User.findOne({ email });
-    if (userExists) {
+    let user = await User.findOne({ email });
+    if (user) {
+      if (!user.isVerified) {
+        // If unverified, allow them to re-signup and get a new OTP
+        const salt = await bcrypt.genSalt(10);
+        user.password = await bcrypt.hash(password, salt);
+        user.name = name;
+        
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        user.verificationOTP = otp;
+        user.verificationOTPExpires = Date.now() + 10 * 60 * 1000;
+        await user.save();
+
+        const subject = "Your verification code";
+        const body = `Your verification code is ${otp}. It will expire in 10 minutes.`;
+        sendEmail(user.email, subject, body, `<p>${body}</p>`).catch(() => {});
+
+        return res.status(201).json({ message: "Verification OTP resent to email" });
+      }
       return res.status(400).json({ error: "User already exists" });
     }
 
@@ -52,7 +69,7 @@ const signup = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user (unverified)
-    const user = await User.create({
+    user = await User.create({
       name,
       email,
       password: hashedPassword,
@@ -102,7 +119,7 @@ const verifySignupOTP = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ error: "Invalid email or OTP" });
 
-    if (!user.verificationOTP || user.verificationOTP !== otp) {
+    if (!user.verificationOTP || String(user.verificationOTP) !== String(otp)) {
       return res.status(400).json({ error: "Invalid OTP" });
     }
 
@@ -171,7 +188,7 @@ const verifyPasswordReset = async (req, res) => {
 
     const email = String(rawEmail).toLowerCase();
     const user = await User.findOne({ email });
-    if (!user || !user.resetPasswordOTP || user.resetPasswordOTP !== otp) {
+    if (!user || !user.resetPasswordOTP || String(user.resetPasswordOTP) !== String(otp)) {
       return res.status(400).json({ error: "Invalid OTP or email" });
     }
 

@@ -321,6 +321,31 @@ const updateUserRole = async (req, res) => {
   }
 };
 
+// Delete a user (admin)
+const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userToDelete = await User.findById(id);
+
+    if (!userToDelete) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (userToDelete.role === 'admin') {
+      const adminCount = await User.countDocuments({ role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ error: 'Cannot delete the only admin account' });
+      }
+    }
+
+    await User.findByIdAndDelete(id);
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error('deleteUser error:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+};
+
 module.exports = {
   getUsers,
   addGalleryImage,
@@ -337,4 +362,5 @@ module.exports = {
   deleteGalleryImage,
   addAdmin,
   updateUserRole,
+  deleteUser,
 };

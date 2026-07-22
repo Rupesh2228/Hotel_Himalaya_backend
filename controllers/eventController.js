@@ -1,5 +1,6 @@
 const Event = require('../models/Event');
 const EventBooking = require('../models/EventBooking');
+const { sendAdminEmail } = require('../services/emailService');
 
 // Create Event (Admin only)
 const createEvent = async (req, res) => {
@@ -112,6 +113,28 @@ const bookEvent = async (req, res) => {
       bookedByEmail: bookedByEmail || (req.user ? req.user.email : ''),
       bookedByPhone: bookedByPhone || ''
     });
+
+    // Send Email alert to admin (fire-and-forget)
+    const emailSubject = `🎟️ New Event Booking: ${event.title} — ${booking.bookedByName}`;
+    const emailBody = `🎟️ New Event Booking!\nEvent: ${event.title}\nGuest: ${booking.bookedByName} (${booking.bookedByEmail})\nPhone: ${booking.bookedByPhone || 'N/A'}\nTickets: ${booking.ticketsCount}\nPrice: Rs. ${event.price}`;
+    const emailHtml = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
+        <div style="background:#0f3460;color:#fff;padding:20px 24px">
+          <h2 style="margin:0">🎟️ New Event Booking Alert</h2>
+        </div>
+        <div style="padding:24px">
+          <table style="width:100%;border-collapse:collapse">
+            <tr><td style="padding:8px 0;color:#666">Event</td><td style="padding:8px 0;font-weight:bold">${event.title}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Guest</td><td style="padding:8px 0">${booking.bookedByName}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Email</td><td style="padding:8px 0">${booking.bookedByEmail || 'N/A'}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Phone</td><td style="padding:8px 0">${booking.bookedByPhone || 'N/A'}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Tickets</td><td style="padding:8px 0;font-weight:bold">${booking.ticketsCount}</td></tr>
+            <tr><td style="padding:8px 0;color:#666">Price</td><td style="padding:8px 0;font-weight:bold">Rs. ${event.price}</td></tr>
+          </table>
+        </div>
+        <div style="background:#f5f5f5;padding:12px 24px;font-size:12px;color:#999">Hotel Himalaya INN Khona Khona INN Khona — Automatic Alert System</div>
+      </div>`;
+    sendAdminEmail(emailSubject, emailBody, emailHtml);
 
     res.status(201).json(booking);
     // Notify admin about the new event booking

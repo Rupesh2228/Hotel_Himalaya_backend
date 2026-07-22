@@ -14,10 +14,12 @@ const {
   deleteGalleryImage,
   addAdmin,
   updateUserRole,
+  deleteUser,
 } = require('../controllers/adminController');
 
 // Admin-only routes
 router.get('/users', protect, isAdmin, getUsers);
+router.delete('/users/:id', protect, isAdmin, deleteUser);
 router.post('/add-admin', protect, isAdmin, addAdmin);
 router.put('/users/:id/role', protect, isAdmin, updateUserRole);
 router.post('/gallery', protect, isAdmin, addGalleryImage);

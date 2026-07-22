@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
   const state = mongoose.connection.readyState;
   res.json({
     status: state === 1 ? 'ok' : 'starting',
-    message: 'Hotel Himalaya API is running',
+    message: 'Hotel Himalaya INN Khona Khona INN Khona API is running',
     dbState: state,
   });
 });

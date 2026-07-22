@@ -188,7 +188,7 @@ exports.createBooking = async (req, res) => {
             <tr><td style="padding:8px 0;color:#666">Verification Code</td><td style="padding:8px 0;font-weight:bold;color:#e94560;font-size:18px">${verificationCode}</td></tr>
           </table>
         </div>
-        <div style="background:#f5f5f5;padding:12px 24px;font-size:12px;color:#999">Hotel Khokana — Automatic Alert System</div>
+        <div style="background:#f5f5f5;padding:12px 24px;font-size:12px;color:#999">Hotel Himalaya INN Khona Khona INN Khona — Automatic Alert System</div>
       </div>`;
 
     sendAdminEmail(emailSubject, emailBody, emailHtml);
