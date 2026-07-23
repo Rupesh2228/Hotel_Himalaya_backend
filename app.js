@@ -4,10 +4,17 @@ const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const hpp = require("hpp");
+const mongoSanitize = require("express-mongo-sanitize");
+const cookieParser = require("cookie-parser");
+const compression = require("compression");
 const mongoose = require("mongoose");
 const path = require("path");
 const fs = require("fs");
+
 const { connectDB } = require("./db");
+const { globalErrorHandler } = require("./utils/errorHandler");
+
+// ── Route imports ──────────────────────────────────────────────────────────────
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const galleryRoutes = require("./routes/galleryRoutes");
@@ -19,66 +26,85 @@ const bookingRoutes = require("./routes/bookingRoutes");
 const adminBookingRoutes = require("./routes/adminBookingRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const eventRoutes = require("./routes/eventRoutes");
-const notificationRoutes = require('./routes/notificationRoutes');
-const tourRoutes = require('./routes/tourRoutes');
+const notificationRoutes = require("./routes/notificationRoutes");
+const tourRoutes = require("./routes/tourRoutes");
 const pastEventRoutes = require("./routes/pastEventRoutes");
 
 const app = express();
 
+// ── Static uploads ─────────────────────────────────────────────────────────────
 const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// ── Security middleware ────────────────────────────────────────────────────────
+app.use(
+  helmet({
+    crossOriginOpenerPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 
-app.use(helmet({
-  crossOriginOpenerPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" }
-}));
-app.set('trust proxy', 1);
-app.use(limiter);
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.set("trust proxy", 1);
 
-app.use(hpp());
+// General rate limiter (per IP, 100 req/15 min)
+app.use(
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { status: "fail", error: "Too many requests. Please slow down." },
+  })
+);
 
-// Root and health endpoints should stay available while the database is connecting.
-app.get('/', (req, res) => {
+app.use(
+  cors({
+    origin: true,
+    credentials: true, // needed for HTTP-only cookie auth
+  })
+);
+
+// ── Body parsing ───────────────────────────────────────────────────────────────
+app.use(express.json({ limit: "10kb" }));           // limit payload size
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+app.use(cookieParser());                            // parse HTTP-only auth cookie
+
+// ── Data sanitization ─────────────────────────────────────────────────────────
+app.use(mongoSanitize()); // prevent NoSQL injection ($, . operators)
+app.use(hpp());           // prevent HTTP Parameter Pollution
+
+// ── Compression ───────────────────────────────────────────────────────────────
+app.use(compression());
+
+// ── Health & root endpoints ───────────────────────────────────────────────────
+app.get("/", (req, res) => {
   const state = mongoose.connection.readyState;
   res.json({
-    status: state === 1 ? 'ok' : 'starting',
-    message: 'Hotel Himalaya INN Khona Khona INN Khona API is running',
+    status: state === 1 ? "ok" : "starting",
+    message: "Hotel Himalaya INN Khona API is running",
     dbState: state,
   });
 });
 
-app.get('/health', (req, res) => {
-  const state = mongoose.connection.readyState; // 0 disconnected, 1 connected, 2 connecting, 3 disconnecting
-  res.json({ status: state === 1 ? 'ok' : 'db_connecting', state });
+app.get("/health", (req, res) => {
+  const state = mongoose.connection.readyState;
+  res.json({ status: state === 1 ? "ok" : "db_connecting", state });
 });
 
-// Only protect API routes that need a live database connection.
+// ── DB connection guard for API routes ───────────────────────────────────────
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api') && mongoose.connection.readyState !== 1) {
+  if (req.path.startsWith("/api") && mongoose.connection.readyState !== 1) {
     return res.status(503).json({
-      error: 'Service temporarily unavailable (database not connected)',
+      status: "error",
+      error: "Service temporarily unavailable (database not connected)",
       dbState: mongoose.connection.readyState,
     });
   }
   next();
 });
 
+// ── API Routes ────────────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/gallery", galleryRoutes);
@@ -90,62 +116,59 @@ app.use("/api/bookings", bookingRoutes);
 app.use("/api/admin/bookings", adminBookingRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/events", eventRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/tours', tourRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/tours", tourRoutes);
 app.use("/api/past-events", pastEventRoutes);
 
-
+// ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
-  res.status(404).json({ error: "Not found" });
+  res.status(404).json({ status: "fail", error: "Route not found" });
 });
 
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: "Server error" });
-});
+// ── Global error handler (must be last) ───────────────────────────────────────
+app.use(globalErrorHandler);
 
+// ── Start server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 
-// Start server
 app.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
 });
 
-// Connect to database
-connectDB().then(async () => {
-  // Seed admin user after DB connects
-  try {
-    const User = require("./models/User");
-    const bcrypt = require("bcryptjs");
-    const adminEmail = "adminhotel49@gmail.com";
+// ── Connect to database & seed admin ─────────────────────────────────────────
+connectDB()
+  .then(async () => {
+    try {
+      const User = require("./models/User");
+      const bcrypt = require("bcryptjs");
+      const adminEmail = "adminhotel49@gmail.com";
 
-    const adminExists = await User.findOne({ email: adminEmail });
-    if (!adminExists) {
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash("himalayan_hotel48", salt);
-
-      await User.create({
-        name: "Himalayan Admin",
-        email: adminEmail,
-        password: hashedPassword,
-        role: "admin",
-        provider: "local",
-        isVerified: true,
-      });
-      console.log("✓ Admin user created");
-    } else {
-      // Ensure existing admin has isVerified=true (migration)
-      if (!adminExists.isVerified) {
-        adminExists.isVerified = true;
-        await adminExists.save();
-        console.log("✓ Admin user verified (migrated)");
+      const adminExists = await User.findOne({ email: adminEmail });
+      if (!adminExists) {
+        const salt = await bcrypt.genSalt(12);
+        const hashedPassword = await bcrypt.hash("himalayan_hotel48", salt);
+        await User.create({
+          name: "Himalayan Admin",
+          email: adminEmail,
+          password: hashedPassword,
+          role: "admin",
+          provider: "local",
+          isVerified: true,
+        });
+        console.log("✓ Admin user created");
       } else {
-        console.log("✓ Admin user exists");
+        if (!adminExists.isVerified) {
+          adminExists.isVerified = true;
+          await adminExists.save();
+          console.log("✓ Admin user verified (migrated)");
+        } else {
+          console.log("✓ Admin user exists");
+        }
       }
+    } catch (err) {
+      console.error("⚠ Admin seeding error:", err.message);
     }
-  } catch (err) {
-    console.error("⚠ Admin seeding error:", err.message);
-  }
-}).catch(err => {
-  console.error('Database connection error:', err.message);
-});
+  })
+  .catch((err) => {
+    console.error("Database connection error:", err.message);
+  });

@@ -1,40 +1,53 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { AppError } = require("../utils/errorHandler");
+const asyncHandler = require("../utils/asyncHandler");
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev_hotel_jwt_secret";
 
-const protect = async (req, res, next) => {
-  let token;
+/**
+ * protect — verifies JWT from Authorization Bearer header OR httpOnly cookie.
+ * Attaches the user document to req.user (password excluded).
+ */
+const protect = asyncHandler(async (req, res, next) => {
+  let token = null;
 
-  // Check if token exists in Authorization header as Bearer token
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer")
-  ) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(" ")[1];
+  // 1. Try Authorization: Bearer <token>
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  }
 
-      // Verify token
-      const decoded = jwt.verify(token, JWT_SECRET);
-
-      // Get user from token and attach to request object
-      req.user = await User.findById(decoded.id).select("-password");
-      
-      if (!req.user) {
-        return res.status(401).json({ error: "Not authorized, user not found" });
-      }
-
-      return next();
-    } catch (err) {
-      console.error("Auth middleware error:", err);
-      return res.status(401).json({ error: "Not authorized, token failed" });
-    }
+  // 2. Fallback: HTTP-only cookie
+  if (!token && req.cookies && req.cookies.token) {
+    token = req.cookies.token;
   }
 
   if (!token) {
-    return res.status(401).json({ error: "Not authorized, no token provided" });
+    throw new AppError("Not authorized. Please log in to access this resource.", 401);
   }
+
+  // Verify token (throws JsonWebTokenError / TokenExpiredError handled globally)
+  const decoded = jwt.verify(token, JWT_SECRET);
+
+  const currentUser = await User.findById(decoded.id).select("-password");
+  if (!currentUser) {
+    throw new AppError("The account associated with this token no longer exists.", 401);
+  }
+
+  req.user = currentUser;
+  next();
+});
+
+/**
+ * isAdmin — must be used after protect.
+ * Rejects any non-admin user with a 403.
+ */
+const isAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== "admin") {
+    throw new AppError("Access denied. Admin privileges are required.", 403);
+  }
+  next();
 };
 
-module.exports = { protect };
+module.exports = { protect, isAdmin };

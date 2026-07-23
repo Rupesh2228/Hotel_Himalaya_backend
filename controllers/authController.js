@@ -1,111 +1,451 @@
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+/**
+ * auth.controller.js
+ *
+ * Handles all authentication operations:
+ *  - signup          POST /api/auth/signup
+ *  - verifyOTP       POST /api/auth/verify-otp
+ *  - resendOTP       POST /api/auth/resend-otp
+ *  - login           POST /api/auth/login
+ *  - googleLogin     POST /api/auth/google
+ *  - forgotPassword  POST /api/auth/forgot-password
+ *  - resetPassword   POST /api/auth/reset-password/:token
+ *  - logout          POST /api/auth/logout
+ *  - getProfile      GET  /api/auth/me  (protected)
+ */
+
+const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const { validationResult } = require("express-validator");
 const { OAuth2Client } = require("google-auth-library");
 
+const User = require("../models/User");
+const asyncHandler = require("../utils/asyncHandler");
+const { AppError } = require("../utils/errorHandler");
+const { signToken, sendTokenResponse } = require("../config/jwt.config");
+const { generateOTP, sendOTPEmail, sendPasswordResetEmail } = require("../services/otp.service");
+
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-const JWT_SECRET = process.env.JWT_SECRET || "dev_hotel_jwt_secret";
-const restrictedAdminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || "adminhotel49@gmail.com").toLowerCase();
 
-// Helper function to generate JWT
-const generateToken = (id) => {
-  return jwt.sign({ id }, JWT_SECRET, {
-    expiresIn: "7d",
+/** Admin email that is protected from Google-only registration */
+const ADMIN_EMAIL = (
+  process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || "adminhotel49@gmail.com"
+).toLowerCase();
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Extract the first validation error and throw as AppError */
+const validateRequest = (req) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    throw new AppError(errors.array()[0].msg, 400);
+  }
+};
+
+/** Build a safe user object to return in responses (never expose password/OTP fields) */
+const safeUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone || null,
+  role: user.role,
+  avatar: user.avatar || null,
+  provider: user.provider || "local",
+  isVerified: user.isVerified,
+  createdAt: user.createdAt,
+});
+
+// ── 1. Signup ──────────────────────────────────────────────────────────────────
+/**
+ * @desc   Register a new user, send OTP to email
+ * @route  POST /api/auth/signup
+ * @access Public
+ */
+const signup = asyncHandler(async (req, res) => {
+  validateRequest(req);
+
+  const { name, email: rawEmail, phone, password } = req.body;
+  const email = rawEmail.toLowerCase().trim();
+
+  // Block admin email from self-registering
+  if (email === ADMIN_EMAIL) {
+    throw new AppError("Registration with this email is restricted.", 403);
+  }
+
+  // Check if verified user already exists
+  const existingUser = await User.findOne({ email }).select("+verificationOTP +verificationOTPExpires");
+  if (existingUser && existingUser.isVerified) {
+    throw new AppError("An account with this email already exists.", 409);
+  }
+
+  // Hash password
+  const salt = await bcrypt.genSalt(12);
+  const hashedPassword = await bcrypt.hash(password, salt);
+
+  // Generate OTP
+  const otp = generateOTP();
+  const otpExpires = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+  let user;
+  if (existingUser && !existingUser.isVerified) {
+    // Re-signup: update the unverified account
+    existingUser.name = name;
+    existingUser.phone = phone || null;
+    existingUser.password = hashedPassword;
+    existingUser.verificationOTP = otp;
+    existingUser.verificationOTPExpires = otpExpires;
+    existingUser.otpAttempts = 0;
+    existingUser.lastOtpSentAt = new Date();
+    await existingUser.save();
+    user = existingUser;
+  } else {
+    // Fresh registration
+    user = await User.create({
+      name,
+      email,
+      phone: phone || null,
+      password: hashedPassword,
+      role: "user",
+      provider: "local",
+      isVerified: false,
+      verificationOTP: otp,
+      verificationOTPExpires: otpExpires,
+      otpAttempts: 0,
+      lastOtpSentAt: new Date(),
+    });
+  }
+
+  // Send OTP email
+  const emailSent = await sendOTPEmail(email, name, otp);
+  if (!emailSent) {
+    // Rollback user creation if email fails completely
+    if (!existingUser) await User.findByIdAndDelete(user._id);
+    throw new AppError(
+      "Failed to send verification email. Please check your email address and try again.",
+      500
+    );
+  }
+
+  return res.status(201).json({
+    status: "success",
+    message: "Registration successful! A 6-digit verification code has been sent to your email.",
+    email, // frontend uses this to pre-fill the VerifyOTP page
   });
-};
+});
 
+// ── 2. Verify OTP ─────────────────────────────────────────────────────────────
 /**
- * @desc    Authenticate a user with Google OAuth
- * @route   POST /api/auth/google
- * @access  Public
+ * @desc   Verify the 6-digit OTP and activate account; auto-login
+ * @route  POST /api/auth/verify-otp
+ * @access Public
  */
-const googleLogin = async (req, res) => {
-  try {
-    const { credential } = req.body;
-    if (!credential) {
-      return res.status(400).json({ error: "Google token credential is required" });
-    }
+const verifyOTP = asyncHandler(async (req, res) => {
+  validateRequest(req);
 
-    // Verify Google ID Token
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    const email = String(payload.email || '').toLowerCase();
-    const { name, picture } = payload;
+  const { email: rawEmail, otp } = req.body;
+  const email = rawEmail.toLowerCase().trim();
 
-    // Enforce that only standard users can register or log in via Google
-    if (email === restrictedAdminEmail) {
-      return res.status(403).json({ error: "Admin login via Google is restricted. Please use a direct admin login." });
-    }
+  const user = await User.findOne({ email }).select(
+    "+verificationOTP +verificationOTPExpires +password"
+  );
 
-    // Find or create user
-    let user = await User.findOne({ email });
-    if (!user) {
-      user = await User.create({
-        name,
-        email,
-        avatar: picture,
-        role: "user",
-        provider: "google",
-        isVerified: true,
-      });
-    } else {
-      // Preserve existing user roles for returning users.
-      user.avatar = picture || user.avatar;
-      if (!user.provider && !user.password) {
-        user.provider = "google";
-      }
-      await user.save();
-    }
+  if (!user) throw new AppError("No account found with this email address.", 404);
+  if (user.isVerified) throw new AppError("This account is already verified. Please log in.", 400);
 
-    const token = generateToken(user._id);
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV !== 'development',
-      sameSite: process.env.NODE_ENV !== 'development' ? 'none' : 'lax',
-    });
-
-    res.json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        provider: user.provider || (user.avatar && !user.password ? 'google' : 'local'),
-        avatar: user.avatar,
-      },
-    });
-
-    // Update last login timestamp
-    try {
-      user.lastLogin = Date.now();
-      await user.save();
-    } catch (e) {
-      console.warn('Failed to update lastLogin:', e.message || e);
-    }
-  } catch (err) {
-    console.error("Google login error stack:", err.stack || err);
-    res.status(500).json({ error: "Google authentication failed: " + err.message });
+  // OTP comparison
+  if (!user.verificationOTP || user.verificationOTP !== otp.trim()) {
+    throw new AppError("Invalid OTP. Please check the code and try again.", 400);
   }
-};
 
+  // Expiry check
+  if (!user.verificationOTPExpires || user.verificationOTPExpires < Date.now()) {
+    throw new AppError("Your OTP has expired. Please request a new one.", 400);
+  }
+
+  // Mark verified & clear OTP fields
+  user.isVerified = true;
+  user.verificationOTP = undefined;
+  user.verificationOTPExpires = undefined;
+  user.otpAttempts = 0;
+  user.lastOtpSentAt = null;
+  user.lastLogin = new Date();
+  await user.save();
+
+  const token = signToken(user._id);
+  return sendTokenResponse(res, token, safeUser(user), 200);
+});
+
+// ── 3. Resend OTP ─────────────────────────────────────────────────────────────
 /**
- * @desc    Get currently logged in user profile
- * @route   GET /api/auth/me
- * @access  Private
+ * @desc   Resend the verification OTP (max 5 per account, 60-second cooldown)
+ * @route  POST /api/auth/resend-otp
+ * @access Public
  */
-const getMe = async (req, res) => {
-  try {
-    res.json(req.user);
-  } catch (err) {
-    console.error("GetMe error:", err);
-    res.status(500).json({ error: "Server error fetching profile" });
+const resendOTP = asyncHandler(async (req, res) => {
+  validateRequest(req);
+
+  const { email: rawEmail } = req.body;
+  const email = rawEmail.toLowerCase().trim();
+
+  const user = await User.findOne({ email });
+  if (!user) throw new AppError("No account found with this email address.", 404);
+  if (user.isVerified) throw new AppError("This account is already verified.", 400);
+
+  // 60-second cooldown check
+  if (user.lastOtpSentAt) {
+    const secondsSinceLast = (Date.now() - new Date(user.lastOtpSentAt).getTime()) / 1000;
+    if (secondsSinceLast < 60) {
+      const remaining = Math.ceil(60 - secondsSinceLast);
+      throw new AppError(
+        `Please wait ${remaining} second${remaining !== 1 ? "s" : ""} before requesting a new code.`,
+        429
+      );
+    }
   }
-};
+
+  // Max 5 resend attempts
+  if (user.otpAttempts >= 5) {
+    throw new AppError(
+      "Maximum resend attempts reached. Please contact support or register again.",
+      429
+    );
+  }
+
+  const otp = generateOTP();
+  user.verificationOTP = otp;
+  user.verificationOTPExpires = new Date(Date.now() + 5 * 60 * 1000);
+  user.otpAttempts = (user.otpAttempts || 0) + 1;
+  user.lastOtpSentAt = new Date();
+  await user.save();
+
+  const emailSent = await sendOTPEmail(email, user.name, otp);
+  if (!emailSent) {
+    throw new AppError("Failed to send verification email. Please try again.", 500);
+  }
+
+  return res.status(200).json({
+    status: "success",
+    message: "A new verification code has been sent to your email.",
+    attemptsRemaining: 5 - user.otpAttempts,
+  });
+});
+
+// ── 4. Login ──────────────────────────────────────────────────────────────────
+/**
+ * @desc   Login with email and password
+ * @route  POST /api/auth/login
+ * @access Public
+ */
+const login = asyncHandler(async (req, res) => {
+  validateRequest(req);
+
+  const { email: rawEmail, password } = req.body;
+  const email = rawEmail.toLowerCase().trim();
+
+  // Fetch user WITH password for comparison
+  const user = await User.findOne({ email }).select("+password");
+  if (!user) throw new AppError("Invalid email or password.", 401);
+
+  // Google-only accounts have no local password
+  if (!user.password) {
+    throw new AppError(
+      "This account uses Google Sign-In. Please log in with Google.",
+      400
+    );
+  }
+
+  const isMatch = await bcrypt.compare(password, user.password);
+  if (!isMatch) throw new AppError("Invalid email or password.", 401);
+
+  // Block unverified accounts
+  if (!user.isVerified) {
+    return res.status(403).json({
+      status: "unverified",
+      error: "Please verify your email before logging in.",
+      email, // frontend uses this to navigate to verify-otp page
+    });
+  }
+
+  user.lastLogin = new Date();
+  await user.save();
+
+  const token = signToken(user._id);
+  return sendTokenResponse(res, token, safeUser(user));
+});
+
+// ── 5. Google Login ───────────────────────────────────────────────────────────
+/**
+ * @desc   Authenticate via Google OAuth ID token
+ * @route  POST /api/auth/google
+ * @access Public
+ */
+const googleLogin = asyncHandler(async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) throw new AppError("Google token credential is required.", 400);
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken: credential,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+
+  const payload = ticket.getPayload();
+  const email = String(payload.email || "").toLowerCase();
+  const { name, picture } = payload;
+
+  if (email === ADMIN_EMAIL) {
+    throw new AppError("Admin accounts cannot use Google Sign-In.", 403);
+  }
+
+  let user = await User.findOne({ email });
+  if (!user) {
+    user = await User.create({
+      name,
+      email,
+      avatar: picture,
+      role: "user",
+      provider: "google",
+      isVerified: true,
+    });
+  } else {
+    user.avatar = picture || user.avatar;
+    if (!user.provider && !user.password) user.provider = "google";
+    user.lastLogin = new Date();
+    await user.save();
+  }
+
+  const token = signToken(user._id);
+  return sendTokenResponse(res, token, safeUser(user));
+});
+
+// ── 6. Forgot Password ────────────────────────────────────────────────────────
+/**
+ * @desc   Generate password-reset token and send email link
+ * @route  POST /api/auth/forgot-password
+ * @access Public
+ */
+const forgotPassword = asyncHandler(async (req, res) => {
+  validateRequest(req);
+
+  const { email: rawEmail } = req.body;
+  const email = rawEmail.toLowerCase().trim();
+
+  const user = await User.findOne({ email });
+
+  // Always return 200 to prevent email enumeration
+  if (!user || !user.isVerified) {
+    return res.status(200).json({
+      status: "success",
+      message: "If that email is registered and verified, a reset link has been sent.",
+    });
+  }
+
+  // Block Google-only accounts
+  if (!user.password && user.provider === "google") {
+    return res.status(200).json({
+      status: "success",
+      message: "If that email is registered and verified, a reset link has been sent.",
+    });
+  }
+
+  const rawToken = user.generatePasswordResetToken();
+  await user.save({ validateBeforeSave: false });
+
+  // Build reset URL
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    (process.env.NODE_ENV === "production"
+      ? "https://hotel-himalaya.vercel.app"
+      : "http://localhost:5173");
+
+  const resetUrl = `${frontendUrl}/reset-password/${rawToken}`;
+
+  const emailSent = await sendPasswordResetEmail(email, user.name, resetUrl);
+  if (!emailSent) {
+    // Rollback token so user can try again
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpire = undefined;
+    await user.save({ validateBeforeSave: false });
+    throw new AppError("Failed to send reset email. Please try again.", 500);
+  }
+
+  return res.status(200).json({
+    status: "success",
+    message: "If that email is registered and verified, a reset link has been sent.",
+  });
+});
+
+// ── 7. Reset Password ─────────────────────────────────────────────────────────
+/**
+ * @desc   Validate reset token and update password
+ * @route  POST /api/auth/reset-password/:token
+ * @access Public
+ */
+const resetPassword = asyncHandler(async (req, res) => {
+  validateRequest(req);
+
+  const { token } = req.params;
+  const { password } = req.body;
+
+  // Hash the raw token to compare against DB
+  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+  const user = await User.findOne({
+    resetPasswordToken: hashedToken,
+    resetPasswordExpire: { $gt: Date.now() },
+  }).select("+resetPasswordToken +resetPasswordExpire");
+
+  if (!user) {
+    throw new AppError("Password reset link is invalid or has expired.", 400);
+  }
+
+  const salt = await bcrypt.genSalt(12);
+  user.password = await bcrypt.hash(password, salt);
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  // Also clear legacy OTP-based reset fields
+  user.resetPasswordOTP = undefined;
+  user.resetPasswordOTPExpires = undefined;
+  await user.save();
+
+  const jwtToken = signToken(user._id);
+  return sendTokenResponse(res, jwtToken, safeUser(user));
+});
+
+// ── 8. Logout ─────────────────────────────────────────────────────────────────
+/**
+ * @desc   Clear the auth cookie
+ * @route  POST /api/auth/logout
+ * @access Private
+ */
+const logout = asyncHandler(async (req, res) => {
+  res.cookie("token", "", {
+    httpOnly: true,
+    expires: new Date(0),
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  });
+
+  return res.status(200).json({ status: "success", message: "Logged out successfully." });
+});
+
+// ── 9. Get Profile ────────────────────────────────────────────────────────────
+/**
+ * @desc   Get the currently authenticated user's profile
+ * @route  GET /api/auth/me
+ * @access Private
+ */
+const getProfile = asyncHandler(async (req, res) => {
+  // req.user is attached by the protect middleware
+  return res.status(200).json(safeUser(req.user));
+});
 
 module.exports = {
+  signup,
+  verifyOTP,
+  resendOTP,
+  login,
   googleLogin,
-  getMe,
+  forgotPassword,
+  resetPassword,
+  logout,
+  getProfile,
 };
