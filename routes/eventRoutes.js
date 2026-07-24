@@ -15,13 +15,7 @@ const {
 
 // Public
 router.get('/', getEvents);
-router.post('/book', (req, res, next) => {
-  // Optional auth
-  if (req.headers.authorization) {
-    return protect(req, res, next);
-  }
-  next();
-}, bookEvent);
+router.post('/book', bookEvent);
 
 // Private (Registered Users)
 router.get('/my-bookings', protect, getUserBookings);

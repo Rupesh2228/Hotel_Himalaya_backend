@@ -1,7 +1,9 @@
 const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const Room = require('../models/Room');
-const { sendAdminEmail } = require('../services/emailService');
+const { sendEmail } = require('../services/email.service');
+const { createAdminNotification } = require('../services/notificationService');
+const bookingTemplate = require('../templates/booking.template');
 
 const parseDate = (value) => {
   if (!value) return null;
@@ -160,47 +162,40 @@ exports.createBooking = async (req, res) => {
       phone: phone || '',
     });
 
-    // Send Email alert to admin (fire-and-forget)
-    const emailBody =
-      `🏨 New Booking Alert!\n` +
-      `Room: ${roomTitle}\n` +
-      `Guest: ${bookedByName || 'Guest'} (${bookedByEmail || 'N/A'})\n` +
-      `Check-in: ${checkIn}\n` +
-      `Check-out: ${checkOut}\n` +
-      `Members: ${members}\n` +
-      `Code: ${verificationCode}`;
+    // Send confirmation email to customer
+    if (bookedByEmail) {
+      const emailSubject = `Booking Confirmed: ${roomTitle} — Hotel Himalaya INN`;
+      const emailHtml = bookingTemplate({
+        guestName: bookedByName || 'Guest',
+        bookingId: booking._id,
+        roomTitle: roomTitle,
+        checkIn: checkIn,
+        checkOut: checkOut,
+        members: members,
+        price: computedPrice,
+        verificationCode: verificationCode
+      });
+      sendEmail(bookedByEmail, emailSubject, '', emailHtml).catch(e => console.error('Failed to send booking email to customer:', e));
+    }
 
-    // Send Email alert to admin (fire-and-forget)
-    const emailSubject = `🏨 New Booking: ${roomTitle} — ${bookedByName || 'Guest'}`;
-    const emailHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
-        <div style="background:#1a1a2e;color:#fff;padding:20px 24px">
-          <h2 style="margin:0">🏨 New Booking Alert</h2>
-        </div>
-        <div style="padding:24px">
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:8px 0;color:#666">Room</td><td style="padding:8px 0;font-weight:bold">${roomTitle}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Price</td><td style="padding:8px 0;font-weight:bold">Rs. ${Number(roomPrice) || 0}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Guest</td><td style="padding:8px 0">${bookedByName || 'Guest'}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Email</td><td style="padding:8px 0">${bookedByEmail || 'N/A'}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Check-in</td><td style="padding:8px 0;font-weight:bold">${checkIn}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Check-out</td><td style="padding:8px 0;font-weight:bold">${checkOut}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Members</td><td style="padding:8px 0">${members}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Verification Code</td><td style="padding:8px 0;font-weight:bold;color:#e94560;font-size:18px">${verificationCode}</td></tr>
-          </table>
-        </div>
-        <div style="background:#f5f5f5;padding:12px 24px;font-size:12px;color:#999">Hotel Himalaya INN Khona Khona INN Khona — Automatic Alert System</div>
-      </div>`;
-
-    sendAdminEmail(emailSubject, emailBody, emailHtml);
-    // Create admin notification (DB) so admin devices can poll for alerts
+    // Send admin notification (DB + Email)
     try {
-      const { createAdminNotification } = require('../services/notificationService');
       createAdminNotification({
         type: 'booking',
-        title: `New Booking: ${roomTitle}`,
-        message: `${bookedByName || 'Guest'} booked ${roomTitle} (${bookedByEmail || 'N/A'}) from ${checkIn} to ${checkOut}`,
+        title: `New Room Booking: ${roomTitle}`,
+        message: `${bookedByName || 'Guest'} booked ${roomTitle} from ${checkIn} to ${checkOut}.`,
         link: `/admin/bookings/${booking._id}`,
+        sendEmail: true,
+        details: {
+          'Guest Name': bookedByName || 'Guest',
+          'Email': bookedByEmail || 'N/A',
+          'Phone': phone || 'N/A',
+          'Room': roomTitle,
+          'Check-in': checkIn,
+          'Check-out': checkOut,
+          'Total Price': `Rs. ${computedPrice}`,
+          'Verification Code': verificationCode
+        }
       });
     } catch (e) {
       console.error('Failed to queue admin booking notification:', e && e.message ? e.message : e);

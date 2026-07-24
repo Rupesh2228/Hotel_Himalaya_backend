@@ -1,5 +1,7 @@
 const Message = require('../models/Message');
-const { sendAdminEmail } = require('../services/emailService');
+const { sendEmail } = require('../services/email.service');
+const { createAdminNotification } = require('../services/notificationService');
+const contactTemplate = require('../templates/contact.template');
 
 exports.createMessage = async (req, res) => {
   try {
@@ -16,43 +18,27 @@ exports.createMessage = async (req, res) => {
       message: message.trim(),
     });
 
-    // Send Email alert to admin (fire-and-forget)
-    const emailBody =
-      `📩 New Contact Message!\n` +
-      `From: ${newMessage.name} (${newMessage.email})\n` +
-      `Phone: ${newMessage.phone || 'Not provided'}\n` +
-      `Message: ${newMessage.message}`;
+    // Send auto-reply to customer
+    if (newMessage.email) {
+      const emailSubject = `We've received your message — Hotel Himalaya INN`;
+      const emailHtml = contactTemplate(newMessage.name);
+      sendEmail(newMessage.email, emailSubject, '', emailHtml).catch(e => console.error('Failed to send contact auto-reply to customer:', e));
+    }
 
-    // Send Email alert to admin (fire-and-forget)
-    const emailSubject = `📩 New Message from ${newMessage.name}`;
-    const emailHtml = `
-      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
-        <div style="background:#0f3460;color:#fff;padding:20px 24px">
-          <h2 style="margin:0">📩 New Contact Message</h2>
-        </div>
-        <div style="padding:24px">
-          <table style="width:100%;border-collapse:collapse">
-            <tr><td style="padding:8px 0;color:#666">Name</td><td style="padding:8px 0;font-weight:bold">${newMessage.name}</td></tr>
-            <tr><td style="padding:8px 0;color:#666">Email</td><td style="padding:8px 0"><a href="mailto:${newMessage.email}">${newMessage.email}</a></td></tr>
-            <tr><td style="padding:8px 0;color:#666">Phone</td><td style="padding:8px 0">${newMessage.phone || 'Not provided'}</td></tr>
-          </table>
-          <div style="margin-top:16px;padding:16px;background:#f8f9fa;border-radius:6px;border-left:4px solid #0f3460">
-            <p style="margin:0;color:#333">${newMessage.message}</p>
-          </div>
-        </div>
-        <div style="background:#f5f5f5;padding:12px 24px;font-size:12px;color:#999">Hotel Himalaya INN Khona Khona INN Khona — Automatic Alert System</div>
-      </div>`;
-
-    sendAdminEmail(emailSubject, emailBody, emailHtml);
-
-    // Create admin notification
+    // Create admin notification (DB + Email)
     try {
-      const { createAdminNotification } = require('../services/notificationService');
       createAdminNotification({
         type: 'message',
-        title: `New Message from ${newMessage.name}`,
+        title: `New Contact Message: ${newMessage.name}`,
         message: `${newMessage.name} (${newMessage.email}) sent a new message.`,
         link: `/admin/messages/${newMessage._id}`,
+        sendEmail: true,
+        details: {
+          'Name': newMessage.name,
+          'Email': newMessage.email,
+          'Phone': newMessage.phone || 'N/A',
+          'Message': newMessage.message
+        }
       });
     } catch (e) {
       console.error('Failed to queue admin message notification:', e && e.message ? e.message : e);

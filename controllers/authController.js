@@ -22,7 +22,7 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { AppError } = require("../utils/errorHandler");
 const { signToken, sendTokenResponse } = require("../config/jwt.config");
-const { generateOTP, sendOTPEmail, sendPasswordResetEmail } = require("../services/otp.service");
+const { generateOTP, sendOTPEmail, sendPasswordResetEmail, sendWelcomeEmail, sendPasswordChangedEmail } = require("../services/otp.service");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -169,6 +169,9 @@ const verifyOTP = asyncHandler(async (req, res) => {
   user.lastOtpSentAt = null;
   user.lastLogin = new Date();
   await user.save();
+
+  // Send Welcome Email
+  sendWelcomeEmail(user.email, user.name).catch(console.error);
 
   const token = signToken(user._id);
   return sendTokenResponse(res, token, safeUser(user), 200);
@@ -346,30 +349,23 @@ const forgotPassword = asyncHandler(async (req, res) => {
     });
   }
 
-  const rawToken = user.generatePasswordResetToken();
+  // Generate OTP
+  const otp = generateOTP();
+  user.resetPasswordOTP = otp;
+  user.resetPasswordOTPExpires = new Date(Date.now() + 15 * 60 * 1000);
   await user.save({ validateBeforeSave: false });
 
-  // Build reset URL
-  const frontendUrl =
-    process.env.FRONTEND_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://hotel-himalaya.vercel.app"
-      : "http://localhost:5173");
-
-  const resetUrl = `${frontendUrl}/reset-password/${rawToken}`;
-
-  const emailSent = await sendPasswordResetEmail(email, user.name, resetUrl);
+  const emailSent = await sendPasswordResetEmail(email, user.name, otp);
   if (!emailSent) {
-    // Rollback token so user can try again
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
+    user.resetPasswordOTP = undefined;
+    user.resetPasswordOTPExpires = undefined;
     await user.save({ validateBeforeSave: false });
     throw new AppError("Failed to send reset email. Please try again.", 500);
   }
 
   return res.status(200).json({
     status: "success",
-    message: "If that email is registered and verified, a reset link has been sent.",
+    message: "If that email is registered and verified, an OTP has been sent.",
   });
 });
 
@@ -382,29 +378,29 @@ const forgotPassword = asyncHandler(async (req, res) => {
 const resetPassword = asyncHandler(async (req, res) => {
   validateRequest(req);
 
-  const { token } = req.params;
-  const { password } = req.body;
-
-  // Hash the raw token to compare against DB
-  const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+  const { otp, password, email: rawEmail } = req.body;
+  const email = rawEmail.toLowerCase().trim();
 
   const user = await User.findOne({
-    resetPasswordToken: hashedToken,
-    resetPasswordExpire: { $gt: Date.now() },
-  }).select("+resetPasswordToken +resetPasswordExpire");
+    email,
+    resetPasswordOTP: otp,
+    resetPasswordOTPExpires: { $gt: Date.now() },
+  }).select("+resetPasswordOTP +resetPasswordOTPExpires");
 
   if (!user) {
-    throw new AppError("Password reset link is invalid or has expired.", 400);
+    throw new AppError("Invalid or expired OTP.", 400);
   }
 
   const salt = await bcrypt.genSalt(12);
   user.password = await bcrypt.hash(password, salt);
-  user.resetPasswordToken = undefined;
-  user.resetPasswordExpire = undefined;
-  // Also clear legacy OTP-based reset fields
+  
+  // Clear OTP fields
   user.resetPasswordOTP = undefined;
   user.resetPasswordOTPExpires = undefined;
   await user.save();
+
+  // Send Password Changed Email
+  sendPasswordChangedEmail(user.email, user.name).catch(console.error);
 
   const jwtToken = signToken(user._id);
   return sendTokenResponse(res, jwtToken, safeUser(user));

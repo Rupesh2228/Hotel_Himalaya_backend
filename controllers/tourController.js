@@ -1,4 +1,8 @@
 const Tour = require('../models/Tour');
+const TourBooking = require('../models/TourBooking');
+const { sendEmail } = require('../services/email.service');
+const { createAdminNotification } = require('../services/notificationService');
+const tourTemplate = require('../templates/tour.template');
 
 const normalizeTourPayload = (payload = {}) => ({
   title: payload.title?.trim() || '',
@@ -98,4 +102,91 @@ const deleteTour = async (req, res) => {
   }
 };
 
-module.exports = { createTour, getTours, updateTour, deleteTour };
+const bookTour = async (req, res) => {
+  try {
+    const { tourId, travelDate, guests, bookedByName, bookedByEmail, bookedByPhone } = req.body;
+    
+    if (!tourId || !travelDate || !guests || !bookedByName || !bookedByEmail) {
+      return res.status(400).json({ error: 'Missing required booking fields' });
+    }
+
+    const tour = await Tour.findById(tourId);
+    if (!tour) return res.status(404).json({ error: 'Tour not found' });
+
+    const numGuests = Number(guests);
+    if (numGuests <= 0) return res.status(400).json({ error: 'Invalid number of guests' });
+
+    if (tour.maxTravelers > 0 && tour.remainingSeats < numGuests) {
+      return res.status(400).json({ error: 'Not enough available seats' });
+    }
+
+    // Update remaining seats if applicable
+    if (tour.maxTravelers > 0) {
+      tour.remainingSeats -= numGuests;
+      await tour.save();
+    }
+
+    const computedPrice = (tour.price - tour.discount) * numGuests;
+    const durationStr = \`\${tour.durationDays} Days / \${tour.durationNights} Nights\`;
+
+    const booking = await TourBooking.create({
+      tourId: tour._id,
+      tourName: tour.title,
+      destination: tour.destination,
+      duration: durationStr,
+      travelDate,
+      guests: numGuests,
+      totalPrice: computedPrice,
+      bookedBy: req.user ? req.user._id : null,
+      bookedByName,
+      bookedByEmail,
+      bookedByPhone,
+    });
+
+    // Send confirmation email to customer
+    if (bookedByEmail) {
+      const emailSubject = \`Tour Booking Confirmed: \${tour.title} — Hotel Himalaya INN\`;
+      const emailHtml = tourTemplate({
+        customerName: bookedByName,
+        bookingId: booking._id,
+        tourName: tour.title,
+        destination: tour.destination,
+        travelDate: travelDate,
+        duration: durationStr,
+        guests: numGuests,
+        totalPrice: computedPrice,
+      });
+      sendEmail(bookedByEmail, emailSubject, '', emailHtml).catch(e => console.error('Failed to send tour booking email to customer:', e));
+    }
+
+    res.status(201).json(booking);
+    
+    // Notify admin about the new tour booking
+    try {
+      createAdminNotification({
+        type: 'tour_booking',
+        title: \`New Tour Booking: \${tour.title}\`,
+        message: \`\${bookedByName} booked \${numGuests} guest(s) for \${tour.title} on \${travelDate}.\`,
+        link: \`/admin/tours/bookings/\${booking._id}\`,
+        sendEmail: true,
+        details: {
+          'Tour': tour.title,
+          'Destination': tour.destination,
+          'Travel Date': travelDate,
+          'Guest': bookedByName,
+          'Email': bookedByEmail,
+          'Phone': bookedByPhone || 'N/A',
+          'Guests': numGuests,
+          'Total Price': \`Rs. \${computedPrice}\`
+        }
+      });
+    } catch (e) {
+      console.error('Failed to queue admin tour booking notification:', e && e.message ? e.message : e);
+    }
+  } catch (error) {
+    console.error('bookTour error:', error);
+    res.status(500).json({ error: 'Failed to book tour' });
+  }
+};
+
+module.exports = { createTour, getTours, updateTour, deleteTour, bookTour };

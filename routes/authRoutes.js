@@ -54,7 +54,7 @@ router.post("/resend-otp",       authLimiter, resendOTPValidator,        resendO
 router.post("/login",            authLimiter, loginValidator,            login);
 router.post("/google",           authLimiter,                            googleLogin);
 router.post("/forgot-password",  forgotPasswordLimiter, forgotPasswordValidator, forgotPassword);
-router.post("/reset-password/:token", authLimiter, resetPasswordValidator, resetPassword);
+router.post("/reset-password", authLimiter, resetPasswordValidator, resetPassword);
 
 // ── Protected Routes ───────────────────────────────────────────────────────────
 router.get("/me",     protect, getProfile);

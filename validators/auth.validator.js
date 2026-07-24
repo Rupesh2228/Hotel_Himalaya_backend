@@ -105,6 +105,23 @@ const forgotPasswordValidator = [
 
 // ─── Reset Password ───────────────────────────────────────────────────────────
 const resetPasswordValidator = [
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email is required")
+    .isEmail()
+    .withMessage("Please enter a valid email address")
+    .normalizeEmail(),
+
+  body("otp")
+    .trim()
+    .notEmpty()
+    .withMessage("OTP is required")
+    .isLength({ min: 6, max: 6 })
+    .withMessage("OTP must be exactly 6 digits")
+    .isNumeric()
+    .withMessage("OTP must contain only digits"),
+
   body("password")
     .notEmpty()
     .withMessage("New password is required")
