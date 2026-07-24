@@ -30,30 +30,55 @@ const sendPushNotifications = async ({ title, message, link }) => {
 };
 
 const getAdminEmailRecipients = async () => {
-  const adminUsers = await User.find({ role: 'admin', isVerified: true }).select('email').lean();
-  const recipients = adminUsers.map((admin) => admin.email?.trim().toLowerCase()).filter(Boolean);
+  try {
+    const adminUsers = await User.find({ role: 'admin', isVerified: true }).select('email').lean();
+    const recipients = adminUsers.map((admin) => admin.email?.trim().toLowerCase()).filter(Boolean);
+    console.log('[ADMIN-RECIPIENTS] Found admin users from database:', recipients);
 
-  // Keep the configured main admin as a fallback while older user records are migrated.
-  const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
-    .trim()
-    .toLowerCase();
-  if (configuredAdmin) recipients.push(configuredAdmin);
+    // Keep the configured main admin as a fallback while older user records are migrated.
+    const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
+      .trim()
+      .toLowerCase();
+    
+    if (configuredAdmin) {
+      recipients.push(configuredAdmin);
+      console.log('[ADMIN-RECIPIENTS] Added configured admin:', configuredAdmin);
+    }
 
-  return [...new Set(recipients)];
+    const uniqueRecipients = [...new Set(recipients)];
+    console.log('[ADMIN-RECIPIENTS] Final unique recipients:', uniqueRecipients);
+    return uniqueRecipients;
+  } catch (err) {
+    console.error('[ADMIN-RECIPIENTS] Error fetching admin recipients:', err);
+    // Fallback to configured admin even if database query fails
+    const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
+      .trim()
+      .toLowerCase();
+    if (configuredAdmin) {
+      console.log('[ADMIN-RECIPIENTS] Using fallback configured admin:', configuredAdmin);
+      return [configuredAdmin];
+    }
+    return [];
+  }
 };
 
 /**
  * Create a notification for all admins and optionally send them an email.
  * This is fire-and-forget; errors are logged but not thrown.
  */
-const createAdminNotification = async ({ type, title, message, link, sendEmail = true, details = {} }) => {
+/**
+ * Create a notification for all admins and optionally send them an email.
+ * This is fire-and-forget; errors are logged but not thrown.
+ */
+const createAdminNotification = async ({ type, title, message, link, sendEmail: shouldSendEmail = true, details = {} }) => {
   try {
     await Notification.create({ type, title, message, link });
+    console.log('[NOTIFICATION] Created admin notification in database:', type);
   } catch (err) {
-    console.error('Failed to create admin notification:', err && err.message ? err.message : err);
+    console.error('[NOTIFICATION] Failed to create admin notification:', err && err.message ? err.message : err);
   }
 
-  if (sendEmail) {
+  if (shouldSendEmail) {
     try {
       const subject = `${title}`;
       const body = `${message}\n${link ? `Link: ${link}` : ''}`;
@@ -69,24 +94,35 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail =
       
       const html = adminNotificationTemplate(title, emailDetails);
       const recipients = await getAdminEmailRecipients();
+      console.log('[NOTIFICATION-EMAIL] Recipients for sending:', recipients);
 
       if (!recipients.length) {
         console.warn('[EMAIL] Cannot send admin alert — no administrator email is configured.');
         return;
       }
 
-      await Promise.allSettled(
+      console.log('[NOTIFICATION-EMAIL] Sending notification email to', recipients.length, 'recipients');
+      const results = await Promise.allSettled(
         recipients.map((email) => sendEmail(email, subject, body, html))
       );
+      
+      // Log the results
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          console.log(`[NOTIFICATION-EMAIL] Successfully sent to ${recipients[index]}`);
+        } else {
+          console.error(`[NOTIFICATION-EMAIL] Failed to send to ${recipients[index]}:`, result.reason);
+        }
+      });
     } catch (e) {
-      console.error('Failed to send admin notification email:', e && e.message ? e.message : e);
+      console.error('[NOTIFICATION-EMAIL] Failed to send admin notification email:', e && e.message ? e.message : e);
     }
   }
 
   try {
     await sendPushNotifications({ title, message, link });
   } catch (error) {
-    console.error('Failed to send device notifications:', error.message);
+    console.error('[PUSH-NOTIFICATION] Failed to send device notifications:', error.message);
   }
 };
 
