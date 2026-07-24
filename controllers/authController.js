@@ -23,6 +23,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { AppError } = require("../utils/errorHandler");
 const { signToken, sendTokenResponse } = require("../config/jwt.config");
 const { generateOTP } = require("../services/otp.service");
+const { notifyAdminLogin } = require("../services/notificationService");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -263,6 +264,26 @@ const login = asyncHandler(async (req, res) => {
   await user.save();
 
   const token = signToken(user._id);
+
+  // Notify other admins if this user is an admin
+  if (user.role === "admin") {
+    try {
+      const loginDetails = {
+        'Login Time': new Date().toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' }),
+        'IP Address': req.ip || 'Unknown',
+        'User Agent': req.get('user-agent') || 'Unknown',
+        'Login Method': 'Email & Password'
+      };
+      await notifyAdminLogin({
+        adminName: user.name,
+        adminEmail: user.email,
+        loginDetails
+      });
+    } catch (e) {
+      console.error('Failed to send admin login notification:', e?.message || e);
+    }
+  }
+
   return sendTokenResponse(res, token, safeUser(user));
 });
 
@@ -315,6 +336,26 @@ const googleLogin = asyncHandler(async (req, res) => {
   }
 
   const token = signToken(user._id);
+
+  // Notify other admins if this user is an admin
+  if (user.role === "admin") {
+    try {
+      const loginDetails = {
+        'Login Time': new Date().toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' }),
+        'IP Address': req.ip || 'Unknown',
+        'User Agent': req.get('user-agent') || 'Unknown',
+        'Login Method': 'Google OAuth'
+      };
+      await notifyAdminLogin({
+        adminName: user.name,
+        adminEmail: user.email,
+        loginDetails
+      });
+    } catch (e) {
+      console.error('Failed to send admin login notification:', e?.message || e);
+    }
+  }
+
   return sendTokenResponse(res, token, safeUser(user));
 });
 

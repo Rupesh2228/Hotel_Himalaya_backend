@@ -103,10 +103,6 @@ const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
  * Create a notification for all admins and optionally send them an email.
  * This is fire-and-forget; errors are logged but not thrown.
  */
-/**
- * Create a notification for all admins and optionally send them an email.
- * This is fire-and-forget; errors are logged but not thrown.
- */
 const createAdminNotification = async ({ type, title, message, link, sendEmail: shouldSendEmail = true, details = {} }) => {
   try {
     await Notification.create({ type, title, message, link });
@@ -163,4 +159,4 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail: 
   }
 };
 
-module.exports = { createAdminNotification };
+module.exports = { createAdminNotification, notifyAdminLogin };
