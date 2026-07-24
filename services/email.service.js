@@ -1,4 +1,32 @@
 const { brevoClient } = require('../config/brevo');
+const nodemailer = require('nodemailer');
+
+const sendWithSmtp = async (to, subject, text, html) => {
+  const senderEmail = (process.env.SMTP_EMAIL || '').trim();
+  const senderPassword = (process.env.SMTP_PASSWORD || '').trim();
+
+  if (!senderEmail || !senderPassword) {
+    console.warn('[EMAIL] Skipping email — set BREVO_API_KEY or SMTP_EMAIL and SMTP_PASSWORD.');
+    return null;
+  }
+
+  const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '').trim();
+  const transporter = nodemailer.createTransport({
+    service: process.env.SMTP_SERVICE || 'gmail',
+    auth: { user: senderEmail, pass: senderPassword },
+  });
+
+  const data = await transporter.sendMail({
+    from: { name: 'Hotel Himalaya INN', address: senderEmail },
+    to,
+    replyTo: adminEmail || undefined,
+    subject,
+    text,
+    html: html || `<html><body>${text}</body></html>`,
+  });
+  console.log(`[EMAIL] Sent to ${to} through SMTP — Message ID: ${data.messageId}`);
+  return data;
+};
 
 /**
  * Send an email using Brevo v6 BrevoClient API.
@@ -12,13 +40,12 @@ const { brevoClient } = require('../config/brevo');
 const sendEmail = async (to, subject, text, html) => {
   try {
     if (!process.env.BREVO_API_KEY) {
-      console.warn('[EMAIL] Skipping email — BREVO_API_KEY is not set.');
-      return null;
+      return await sendWithSmtp(to, subject, text, html);
     }
 
     const senderEmail = (process.env.SMTP_EMAIL || 'noreply@hotelhimalaya.com').trim();
     const senderName = 'Hotel Himalaya INN';
-    const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || 'admin@hotelhimalaya.com').trim();
+    const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '').trim();
 
     const data = await brevoClient.transactionalEmails.sendTransacEmail({
       subject,
@@ -48,8 +75,13 @@ const sendAdminEmail = async (subject, text, html) => {
   const adminEmail = (
     process.env.ADMIN_EMAIL ||
     process.env.GOOGLE_ADMIN_EMAIL ||
-    'admin@example.com'
+    ''
   ).trim().toLowerCase();
+
+  if (!adminEmail) {
+    console.warn('[EMAIL] Cannot send admin email — ADMIN_EMAIL is not set in environment.');
+    return null;
+  }
 
   return sendEmail(adminEmail, subject, text, html);
 };

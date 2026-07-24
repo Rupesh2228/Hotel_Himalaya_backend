@@ -1,9 +1,23 @@
 const Notification = require('../models/Notification');
-const { sendAdminEmail } = require('./email.service');
+const User = require('../models/User');
+const { sendEmail } = require('./email.service');
 const adminNotificationTemplate = require('../templates/adminNotification.template');
 
+const getAdminEmailRecipients = async () => {
+  const adminUsers = await User.find({ role: 'admin', isVerified: true }).select('email').lean();
+  const recipients = adminUsers.map((admin) => admin.email?.trim().toLowerCase()).filter(Boolean);
+
+  // Keep the configured main admin as a fallback while older user records are migrated.
+  const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
+    .trim()
+    .toLowerCase();
+  if (configuredAdmin) recipients.push(configuredAdmin);
+
+  return [...new Set(recipients)];
+};
+
 /**
- * Create a notification for the admin and optionally send an email.
+ * Create a notification for all admins and optionally send them an email.
  * This is fire-and-forget; errors are logged but not thrown.
  */
 const createAdminNotification = async ({ type, title, message, link, sendEmail = true, details = {} }) => {
@@ -28,7 +42,16 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail =
       }
       
       const html = adminNotificationTemplate(title, emailDetails);
-      sendAdminEmail(subject, body, html).catch(() => {});
+      const recipients = await getAdminEmailRecipients();
+
+      if (!recipients.length) {
+        console.warn('[EMAIL] Cannot send admin alert — no administrator email is configured.');
+        return;
+      }
+
+      await Promise.allSettled(
+        recipients.map((email) => sendEmail(email, subject, body, html))
+      );
     } catch (e) {
       console.error('Failed to send admin notification email:', e && e.message ? e.message : e);
     }

@@ -46,7 +46,7 @@ const adminNotificationTemplate = (type, details) => `
       </table>
       
       <div class="button-container">
-        <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/admin" class="button">Open Admin Dashboard</a>
+        <a href="${process.env.FRONTEND_URL || 'https://hotel-himalaya-frontend.vercel.app'}/hh-cp-9f3m2q" class="button">Open Admin Dashboard</a>
       </div>
     </div>
     <div class="footer">

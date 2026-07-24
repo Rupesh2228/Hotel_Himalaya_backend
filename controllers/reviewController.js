@@ -40,8 +40,15 @@ exports.createReview = async (req, res) => {
       createAdminNotification({
         type: 'review',
         title: `New Review by ${savedReview.author}`,
-        message: `${savedReview.author} rated ${savedReview.rating} — ${savedReview.text.slice(0, 120)}`,
-        link: `/admin/reviews/${savedReview._id}`,
+        message: `${savedReview.author} rated ${savedReview.rating}/5 — ${savedReview.text.slice(0, 120)}`,
+        link: `/hh-cp-9f3m2q`,
+        sendEmail: true,
+        details: {
+          'Author': savedReview.author,
+          'Email': savedReview.email || 'N/A',
+          'Rating': `${savedReview.rating} / 5`,
+          'Review': savedReview.text.slice(0, 300),
+        }
       });
     } catch (e) {
       console.error('Failed to queue admin review notification:', e && e.message ? e.message : e);

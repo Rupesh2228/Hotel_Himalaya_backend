@@ -26,10 +26,14 @@ const { generateOTP } = require("../services/otp.service");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/** Admin email that is protected from Google-only registration */
+/** The one Google account allowed to access the administrator dashboard. */
 const ADMIN_EMAIL = (
-  process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || "adminhotel49@gmail.com"
+  process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || ''
 ).toLowerCase();
+
+if (!ADMIN_EMAIL) {
+  console.warn('[AUTH] WARNING: ADMIN_EMAIL is not set. Google sign-in cannot grant administrator access.');
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -281,29 +285,31 @@ const googleLogin = asyncHandler(async (req, res) => {
   const email = String(payload.email || "").toLowerCase();
   const { name, picture } = payload;
 
-  if (email === ADMIN_EMAIL) {
-    throw new AppError("Admin accounts cannot use Google Sign-In.", 403);
-  }
-
   let user = await User.findOne({ email });
   if (!user) {
     user = await User.create({
       name,
       email,
       avatar: picture,
-      role: isAdminLogin ? "pending_admin" : "user",
+      // Only the configured email becomes an administrator automatically.
+      // Other accounts requesting admin access remain pending for approval.
+      role: email === ADMIN_EMAIL ? "admin" : (isAdminLogin ? "pending_admin" : "user"),
       provider: "google",
       isVerified: true,
     });
   } else {
     user.avatar = picture || user.avatar;
     if (!user.provider && !user.password) user.provider = "google";
-    
-    // If they were a normal user but are trying to log in as admin, mark them pending
-    if (isAdminLogin && user.role === "user") {
+
+    // Keep the configured Google account as admin, including accounts created
+    // before Google sign-in was enabled.
+    if (email === ADMIN_EMAIL && user.role !== "admin") {
+      user.role = "admin";
+    } else if (isAdminLogin && user.role === "user") {
+      // Any other account requesting admin access requires approval.
       user.role = "pending_admin";
     }
-    
+
     user.lastLogin = new Date();
     await user.save();
   }
