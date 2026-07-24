@@ -2,6 +2,32 @@ const Notification = require('../models/Notification');
 const User = require('../models/User');
 const { sendEmail } = require('./email.service');
 const adminNotificationTemplate = require('../templates/adminNotification.template');
+const PushSubscription = require('../models/PushSubscription');
+const webpush = require('web-push');
+
+const sendPushNotifications = async ({ title, message, link }) => {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+  webpush.setVapidDetails(
+    process.env.VAPID_SUBJECT || 'mailto:admin@hotelhimalaya.com',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+  const subscriptions = await PushSubscription.find();
+  const payload = JSON.stringify({ title, body: message, link: link || '/hh-cp-9f3m2q' });
+  await Promise.allSettled(subscriptions.map(async (subscription) => {
+    try {
+      await webpush.sendNotification({
+        endpoint: subscription.endpoint,
+        keys: subscription.keys,
+      }, payload);
+    } catch (error) {
+      if (error.statusCode === 404 || error.statusCode === 410) {
+        await PushSubscription.deleteOne({ _id: subscription._id });
+      }
+      throw error;
+    }
+  }));
+};
 
 const getAdminEmailRecipients = async () => {
   const adminUsers = await User.find({ role: 'admin', isVerified: true }).select('email').lean();
@@ -55,6 +81,12 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail =
     } catch (e) {
       console.error('Failed to send admin notification email:', e && e.message ? e.message : e);
     }
+  }
+
+  try {
+    await sendPushNotifications({ title, message, link });
+  } catch (error) {
+    console.error('Failed to send device notifications:', error.message);
   }
 };
 
