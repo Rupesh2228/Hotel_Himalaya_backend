@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 
 async function testMail() {
   const email = process.env.SMTP_EMAIL;
-  const pass = process.env.SMTP_PASSWORD;
+  const pass = (process.env.SMTP_PASSWORD || '').replace(/\s+/g, '');
   
   console.log('User:', email);
   console.log('Pass length:', pass.length);

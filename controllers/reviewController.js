@@ -37,7 +37,7 @@ exports.createReview = async (req, res) => {
     // Notify admin of new review
     try {
       const { createAdminNotification } = require('../services/notificationService');
-      createAdminNotification({
+      await createAdminNotification({
         type: 'review',
         title: `New Review by ${savedReview.author}`,
         message: `${savedReview.author} rated ${savedReview.rating}/5 — ${savedReview.text.slice(0, 120)}`,

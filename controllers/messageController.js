@@ -19,7 +19,7 @@ exports.createMessage = async (req, res) => {
 
     // Create admin notification (DB + Email)
     try {
-      createAdminNotification({
+      await createAdminNotification({
         type: 'message',
         title: `New Contact Message: ${newMessage.name}`,
         message: `${newMessage.name} (${newMessage.email}) sent a new message.`,

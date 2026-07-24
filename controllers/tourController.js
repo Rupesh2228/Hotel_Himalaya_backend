@@ -142,11 +142,9 @@ const bookTour = async (req, res) => {
     });
 
 
-    res.status(201).json(booking);
-    
     // Notify admin about the new tour booking
     try {
-      createAdminNotification({
+      await createAdminNotification({
         type: 'tour_booking',
         title: `New Tour Booking: ${tour.title}`,
         message: `${bookedByName} booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
@@ -166,6 +164,7 @@ const bookTour = async (req, res) => {
     } catch (e) {
       console.error('Failed to queue admin tour booking notification:', e && e.message ? e.message : e);
     }
+    res.status(201).json(booking);
   } catch (error) {
     console.error('bookTour error:', error);
     res.status(500).json({ error: 'Failed to book tour' });

@@ -163,7 +163,7 @@ exports.createBooking = async (req, res) => {
 
     // Send admin notification (DB + Email)
     try {
-      createAdminNotification({
+      await createAdminNotification({
         type: 'booking',
         title: `New Room Booking: ${roomTitle}`,
         message: `${bookedByName || 'Guest'} booked ${roomTitle} from ${checkIn} to ${checkOut}.`,

@@ -3,7 +3,9 @@ const nodemailer = require('nodemailer');
 
 const sendWithSmtp = async (to, subject, text, html) => {
   const senderEmail = (process.env.SMTP_EMAIL || '').trim();
-  const senderPassword = (process.env.SMTP_PASSWORD || '').trim();
+  // Google displays App Passwords in groups of four. Remove those display
+  // spaces so SMTP always receives the required 16-character password.
+  const senderPassword = (process.env.SMTP_PASSWORD || '').replace(/\s+/g, '');
 
   if (!senderEmail || !senderPassword) {
     console.warn('[EMAIL] Skipping email — set BREVO_API_KEY or SMTP_EMAIL and SMTP_PASSWORD.');

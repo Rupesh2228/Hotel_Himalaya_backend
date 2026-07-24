@@ -23,3 +23,13 @@ exports.markAsRead = async (req, res) => {
     res.status(500).json({ error: 'Failed to update notification' });
   }
 };
+
+exports.markAllAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany({ read: false }, { $set: { read: true } });
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error('markAllAsRead error:', err);
+    res.status(500).json({ error: 'Failed to update notifications' });
+  }
+};

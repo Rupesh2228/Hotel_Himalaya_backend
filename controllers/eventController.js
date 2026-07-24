@@ -115,10 +115,9 @@ const bookEvent = async (req, res) => {
     });
 
 
-    res.status(201).json(booking);
     // Notify admin about the new event booking
     try {
-      createAdminNotification({
+      await createAdminNotification({
         type: 'event_booking',
         title: `New Event Booking: ${event.title}`,
         message: `${booking.bookedByName} booked ${booking.ticketsCount} ticket(s) for ${event.title}`,
@@ -136,6 +135,7 @@ const bookEvent = async (req, res) => {
     } catch (e) {
       console.error('Failed to queue admin event booking notification:', e && e.message ? e.message : e);
     }
+    res.status(201).json(booking);
   } catch (err) {
     console.error('bookEvent error:', err);
     res.status(500).json({ error: 'Failed to book event' });
