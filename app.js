@@ -4,7 +4,6 @@ const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const hpp = require("hpp");
-const mongoSanitize = require("express-mongo-sanitize");
 const cookieParser = require("cookie-parser");
 const compression = require("compression");
 const mongoose = require("mongoose");
@@ -71,7 +70,24 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());                            // parse HTTP-only auth cookie
 
 // ── Data sanitization ─────────────────────────────────────────────────────────
-app.use(mongoSanitize()); // prevent NoSQL injection ($, . operators)
+// Manual NoSQL injection sanitizer (express-mongo-sanitize incompatible with Express 5)
+const sanitizeValue = (val) => {
+  if (val && typeof val === 'object') {
+    for (const key of Object.keys(val)) {
+      if (key.startsWith('$') || key.includes('.')) {
+        delete val[key];
+      } else {
+        sanitizeValue(val[key]);
+      }
+    }
+  }
+  return val;
+};
+app.use((req, res, next) => {
+  if (req.body) sanitizeValue(req.body);
+  if (req.params) sanitizeValue(req.params);
+  next();
+});
 app.use(hpp());           // prevent HTTP Parameter Pollution
 
 // ── Compression ───────────────────────────────────────────────────────────────
