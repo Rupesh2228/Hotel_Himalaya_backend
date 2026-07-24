@@ -15,7 +15,7 @@ const generateOTP = () => {
  */
 const sendOTPEmail = async (email, name, otp) => {
   const subject = "Verify Your Email — Hotel Himalaya INN";
-  const text = \`Hello \${name},\n\nYour verification code is: \${otp}\n\nThis code expires in 5 minutes.\n\nDo not share this OTP with anyone.\n\nRegards,\nHotel Himalaya INN\`;
+  const text = `Hello ${name},\n\nYour verification code is: ${otp}\n\nThis code expires in 5 minutes.\n\nDo not share this OTP with anyone.\n\nRegards,\nHotel Himalaya INN`;
   const html = otpTemplate(otp, 'verification');
   return sendEmail(email, subject, text, html);
 };
@@ -25,7 +25,7 @@ const sendOTPEmail = async (email, name, otp) => {
  */
 const sendPasswordResetEmail = async (email, name, otp) => {
   const subject = "Password Reset Request — Hotel Himalaya INN";
-  const text = \`Hello \${name},\n\nYour password reset code is: \${otp}\n\nThis code expires in 5 minutes.\n\nIf you did not request this, ignore this email.\n\nRegards,\nHotel Himalaya INN\`;
+  const text = `Hello ${name},\n\nYour password reset code is: ${otp}\n\nThis code expires in 5 minutes.\n\nIf you did not request this, ignore this email.\n\nRegards,\nHotel Himalaya INN`;
   const html = otpTemplate(otp, 'reset');
   return sendEmail(email, subject, text, html);
 };
@@ -35,7 +35,7 @@ const sendPasswordResetEmail = async (email, name, otp) => {
  */
 const sendPasswordChangedEmail = async (email, name) => {
   const subject = "Password Changed Successfully — Hotel Himalaya INN";
-  const text = \`Hello \${name},\n\nYour password has been changed successfully. If you did not make this change, please contact support.\n\nRegards,\nHotel Himalaya INN\`;
+  const text = `Hello ${name},\n\nYour password has been changed successfully. If you did not make this change, please contact support.\n\nRegards,\nHotel Himalaya INN`;
   const html = resetPasswordSuccessTemplate(name);
   return sendEmail(email, subject, text, html);
 };
@@ -45,7 +45,7 @@ const sendPasswordChangedEmail = async (email, name) => {
  */
 const sendWelcomeEmail = async (email, name) => {
   const subject = "Welcome to Hotel Himalaya INN";
-  const text = \`Hello \${name},\n\nWelcome to Hotel Himalaya INN Khona! Your account has been successfully verified. You can now book luxury rooms, exclusive tours, and manage your reservations directly from your dashboard.\n\nRegards,\nHotel Himalaya INN\`;
+  const text = `Hello ${name},\n\nWelcome to Hotel Himalaya INN Khona! Your account has been successfully verified. You can now book luxury rooms, exclusive tours, and manage your reservations directly from your dashboard.\n\nRegards,\nHotel Himalaya INN`;
   const html = welcomeTemplate(name);
   return sendEmail(email, subject, text, html);
 };
