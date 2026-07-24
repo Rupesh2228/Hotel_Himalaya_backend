@@ -87,6 +87,18 @@ const deleteExpiredBookings = async () => {
 
   if (expiredIds.length > 0) {
     await Booking.deleteMany({ _id: { $in: expiredIds } });
+    console.log(`[CLEANUP] Deleted ${expiredIds.length} expired booking(s)`);
+  }
+
+  // Also delete unverified bookings older than 1 hour (prevent stale unverified bookings)
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const oldUnverifiedResult = await Booking.deleteMany({
+    verified: false,
+    createdAt: { $lt: oneHourAgo }
+  });
+
+  if (oldUnverifiedResult.deletedCount > 0) {
+    console.log(`[CLEANUP] Deleted ${oldUnverifiedResult.deletedCount} old unverified booking(s)`);
   }
 };
 
@@ -108,6 +120,9 @@ exports.getBookings = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
   try {
+    // Clean up expired/old unverified bookings first
+    await deleteExpiredBookings();
+
     const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail, phone } = req.body;
 
     if (!roomId || !roomTitle || !checkIn || !checkOut || !members) {
@@ -126,15 +141,27 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: 'Check-out date must be after check-in date' });
     }
 
-    const existingBookings = await Booking.find({ roomId, status: { $ne: 'Cancelled' } });
-    const overlappingBooking = existingBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
+    // Only check VERIFIED bookings to avoid blocking on unconfirmed bookings
+    // Unverified bookings older than 1 hour are auto-deleted by deleteExpiredBookings()
+    const verifiedBookings = await Booking.find({ 
+      roomId, 
+      verified: true,
+      status: { $ne: 'Cancelled' }
+    });
+    
+    console.log(`[BOOKING-CHECK] Checking ${verifiedBookings.length} verified booking(s) for room ${roomTitle}`);
+    
+    const overlappingBooking = verifiedBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
 
     if (overlappingBooking) {
+      console.log(`[BOOKING-CHECK] Found overlap with booking: ${overlappingBooking._id}`);
       return res.status(409).json({
         error: 'This room is already booked for the selected time',
         booking: serializeBooking(overlappingBooking),
       });
     }
+
+    console.log(`[BOOKING-CHECK] No conflicts found - proceeding with booking`);
 
     const room = await Room.findById(roomId);
     if (!room) {
@@ -160,6 +187,7 @@ exports.createBooking = async (req, res) => {
       phone: phone || '',
     });
 
+    console.log(`[BOOKING-CREATED] New booking: ${booking._id} for ${roomTitle}`);
 
     // Send admin notification (DB + Email)
     try {
