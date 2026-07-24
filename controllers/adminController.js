@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const User = require('../models/User');
 const GalleryImage = require('../models/GalleryImage');
+const GalleryCategory = require('../models/GalleryCategory');
 const Room = require('../models/Room');
 const Attraction = require('../models/Attraction');
 
@@ -24,19 +25,70 @@ const getUsers = async (req, res) => {
   try {
     const users = await User.find().select('-password');
     res.json(users);
+
+// Get all users (for admin)
+const getUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.json(users);
   } catch (err) {
     console.error('getUsers error:', err);
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 };
 
+// Add a gallery category (admin)
+const addGalleryCategory = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Category name is required' });
+    
+    const existing = await GalleryCategory.findOne({ name });
+    if (existing) return res.status(400).json({ error: 'Category already exists' });
+
+    const category = await GalleryCategory.create({ name });
+    res.status(201).json(category);
+  } catch (err) {
+    console.error('addGalleryCategory error:', err);
+    res.status(500).json({ error: 'Failed to add category' });
+  }
+};
+
+// Delete a gallery category (admin)
+const deleteGalleryCategory = async (req, res) => {
+  try {
+    const category = await GalleryCategory.findByIdAndDelete(req.params.id);
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+    
+    // Optionally remove category from images
+    await GalleryImage.updateMany({ category: req.params.id }, { $unset: { category: 1 } });
+    
+    res.json({ message: 'Category removed' });
+  } catch (err) {
+    console.error('deleteGalleryCategory error:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+};
+
+// Public: get all gallery categories
+const getGalleryCategories = async (req, res) => {
+  try {
+    const categories = await GalleryCategory.find().sort({ createdAt: -1 });
+    res.json(categories);
+  } catch (err) {
+    console.error('getGalleryCategories error:', err);
+    res.status(500).json({ error: 'Failed to fetch categories' });
+  }
+};
+
 // Add a gallery image (admin)
 const addGalleryImage = async (req, res) => {
   try {
-    const { url, title, description } = req.body;
+    const { url, title, description, category } = req.body;
     if (!url) return res.status(400).json({ error: 'Image URL is required' });
 
-    const image = await GalleryImage.create({ url: normalizePublicUrl(req, url), title, description });
+    const image = await GalleryImage.create({ url: normalizePublicUrl(req, url), title, description, category });
+    await image.populate('category');
     res.status(201).json(image);
   } catch (err) {
     console.error('addGalleryImage error:', err);
@@ -47,7 +99,7 @@ const addGalleryImage = async (req, res) => {
 // Public: get all gallery images
 const getGalleryImages = async (req, res) => {
   try {
-    const images = await GalleryImage.find().sort({ createdAt: -1 }).lean();
+    const images = await GalleryImage.find().populate('category').sort({ createdAt: -1 }).lean();
     res.json(images.map((image) => ({
       ...image,
       url: normalizePublicUrl(req, image.url),
@@ -363,4 +415,7 @@ module.exports = {
   addAdmin,
   updateUserRole,
   deleteUser,
+  addGalleryCategory,
+  deleteGalleryCategory,
+  getGalleryCategories,
 };

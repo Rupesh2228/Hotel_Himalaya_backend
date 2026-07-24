@@ -15,6 +15,8 @@ const {
   addAdmin,
   updateUserRole,
   deleteUser,
+  addGalleryCategory,
+  deleteGalleryCategory,
 } = require('../controllers/adminController');
 
 // Admin-only routes
@@ -24,6 +26,8 @@ router.post('/add-admin', protect, isAdmin, addAdmin);
 router.put('/users/:id/role', protect, isAdmin, updateUserRole);
 router.post('/gallery', protect, isAdmin, addGalleryImage);
 router.delete('/gallery/:id', protect, isAdmin, deleteGalleryImage);
+router.post('/gallery-categories', protect, isAdmin, addGalleryCategory);
+router.delete('/gallery-categories/:id', protect, isAdmin, deleteGalleryCategory);
 router.post('/rooms', protect, isAdmin, addRoom);
 router.put('/rooms/:id', protect, isAdmin, updateRoom);
 router.delete('/rooms/:id', protect, isAdmin, deleteRoom);
