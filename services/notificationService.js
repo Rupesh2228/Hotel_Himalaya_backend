@@ -63,6 +63,43 @@ const getAdminEmailRecipients = async () => {
 };
 
 /**
+ * Notify other admins that an admin has logged in (security alert).
+ * Excludes the admin who just logged in from the recipients list.
+ */
+const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
+  try {
+    const allRecipients = await getAdminEmailRecipients();
+    // Exclude the admin who just logged in from notifications
+    const otherAdmins = allRecipients.filter(email => email !== adminEmail?.toLowerCase());
+
+    if (otherAdmins.length === 0) {
+      console.log('[ADMIN-LOGIN-NOTIFICATION] No other admins to notify');
+      return;
+    }
+
+    const adminLoginTemplate = require('../templates/adminLogin.template');
+    const subject = `🔐 Admin Login: ${adminName}`;
+    const body = `${adminName} logged into the admin dashboard.`;
+    const html = adminLoginTemplate(adminName, adminEmail, loginDetails);
+
+    console.log('[ADMIN-LOGIN-NOTIFICATION] Sending login alerts to', otherAdmins.length, 'admin(s)');
+    const results = await Promise.allSettled(
+      otherAdmins.map((email) => sendEmail(email, subject, body, html))
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        console.log(`[ADMIN-LOGIN-NOTIFICATION] Successfully sent to ${otherAdmins[index]}`);
+      } else {
+        console.error(`[ADMIN-LOGIN-NOTIFICATION] Failed to send to ${otherAdmins[index]}:`, result.reason);
+      }
+    });
+  } catch (e) {
+    console.error('[ADMIN-LOGIN-NOTIFICATION] Error:', e && e.message ? e.message : e);
+  }
+};
+
+/**
  * Create a notification for all admins and optionally send them an email.
  * This is fire-and-forget; errors are logged but not thrown.
  */
