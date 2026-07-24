@@ -1,9 +1,7 @@
 const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const Room = require('../models/Room');
-const { sendEmail } = require('../services/email.service');
 const { createAdminNotification } = require('../services/notificationService');
-const bookingTemplate = require('../templates/booking.template');
 
 const parseDate = (value) => {
   if (!value) return null;
@@ -162,21 +160,6 @@ exports.createBooking = async (req, res) => {
       phone: phone || '',
     });
 
-    // Send confirmation email to customer
-    if (bookedByEmail) {
-      const emailSubject = `Booking Confirmed: ${roomTitle} — Hotel Himalaya INN`;
-      const emailHtml = bookingTemplate({
-        guestName: bookedByName || 'Guest',
-        bookingId: booking._id,
-        roomTitle: roomTitle,
-        checkIn: checkIn,
-        checkOut: checkOut,
-        members: members,
-        price: computedPrice,
-        verificationCode: verificationCode
-      });
-      sendEmail(bookedByEmail, emailSubject, '', emailHtml).catch(e => console.error('Failed to send booking email to customer:', e));
-    }
 
     // Send admin notification (DB + Email)
     try {

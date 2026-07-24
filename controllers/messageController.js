@@ -1,7 +1,5 @@
 const Message = require('../models/Message');
-const { sendEmail } = require('../services/email.service');
 const { createAdminNotification } = require('../services/notificationService');
-const contactTemplate = require('../templates/contact.template');
 
 exports.createMessage = async (req, res) => {
   try {
@@ -18,12 +16,6 @@ exports.createMessage = async (req, res) => {
       message: message.trim(),
     });
 
-    // Send auto-reply to customer
-    if (newMessage.email) {
-      const emailSubject = `We've received your message — Hotel Himalaya INN`;
-      const emailHtml = contactTemplate(newMessage.name);
-      sendEmail(newMessage.email, emailSubject, '', emailHtml).catch(e => console.error('Failed to send contact auto-reply to customer:', e));
-    }
 
     // Create admin notification (DB + Email)
     try {

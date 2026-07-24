@@ -1,8 +1,6 @@
 const Event = require('../models/Event');
 const EventBooking = require('../models/EventBooking');
-const { sendEmail } = require('../services/email.service');
 const { createAdminNotification } = require('../services/notificationService');
-const eventTemplate = require('../templates/event.template');
 
 // Create Event (Admin only)
 const createEvent = async (req, res) => {
@@ -116,20 +114,6 @@ const bookEvent = async (req, res) => {
       bookedByPhone: bookedByPhone || ''
     });
 
-    // Send confirmation email to customer
-    if (booking.bookedByEmail) {
-      const emailSubject = `Event Ticket Confirmed: ${event.title} — Hotel Himalaya INN`;
-      const emailHtml = eventTemplate({
-        customerName: booking.bookedByName,
-        bookingId: booking._id,
-        eventName: event.title,
-        eventDate: event.date,
-        eventTime: event.time,
-        venue: event.location,
-        tickets: booking.ticketsCount,
-      });
-      sendEmail(booking.bookedByEmail, emailSubject, '', emailHtml).catch(e => console.error('Failed to send event booking email to customer:', e));
-    }
 
     res.status(201).json(booking);
     // Notify admin about the new event booking

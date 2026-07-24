@@ -22,7 +22,7 @@ const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { AppError } = require("../utils/errorHandler");
 const { signToken, sendTokenResponse } = require("../config/jwt.config");
-const { generateOTP, sendOTPEmail, sendPasswordResetEmail, sendWelcomeEmail, sendPasswordChangedEmail } = require("../services/otp.service");
+const { generateOTP } = require("../services/otp.service");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -114,16 +114,7 @@ const signup = asyncHandler(async (req, res) => {
     });
   }
 
-  // Send OTP email
-  const emailSent = await sendOTPEmail(email, name, otp);
-  if (!emailSent) {
-    // Rollback user creation if email fails completely
-    if (!existingUser) await User.findByIdAndDelete(user._id);
-    throw new AppError(
-      "Failed to send verification email. Please check your email address and try again.",
-      500
-    );
-  }
+  // OTP email skipped — Brevo is used only for admin notifications
 
   return res.status(201).json({
     status: "success",
@@ -170,8 +161,7 @@ const verifyOTP = asyncHandler(async (req, res) => {
   user.lastLogin = new Date();
   await user.save();
 
-  // Send Welcome Email
-  sendWelcomeEmail(user.email, user.name).catch(console.error);
+  // Welcome email skipped — Brevo is used only for admin notifications
 
   const token = signToken(user._id);
   return sendTokenResponse(res, token, safeUser(user), 200);
@@ -220,10 +210,7 @@ const resendOTP = asyncHandler(async (req, res) => {
   user.lastOtpSentAt = new Date();
   await user.save();
 
-  const emailSent = await sendOTPEmail(email, user.name, otp);
-  if (!emailSent) {
-    throw new AppError("Failed to send verification email. Please try again.", 500);
-  }
+  // OTP resend email skipped — Brevo is used only for admin notifications
 
   return res.status(200).json({
     status: "success",
@@ -355,13 +342,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   user.resetPasswordOTPExpires = new Date(Date.now() + 15 * 60 * 1000);
   await user.save({ validateBeforeSave: false });
 
-  const emailSent = await sendPasswordResetEmail(email, user.name, otp);
-  if (!emailSent) {
-    user.resetPasswordOTP = undefined;
-    user.resetPasswordOTPExpires = undefined;
-    await user.save({ validateBeforeSave: false });
-    throw new AppError("Failed to send reset email. Please try again.", 500);
-  }
+  // Password reset email skipped — Brevo is used only for admin notifications
 
   return res.status(200).json({
     status: "success",
@@ -399,8 +380,7 @@ const resetPassword = asyncHandler(async (req, res) => {
   user.resetPasswordOTPExpires = undefined;
   await user.save();
 
-  // Send Password Changed Email
-  sendPasswordChangedEmail(user.email, user.name).catch(console.error);
+  // Password changed email skipped — Brevo is used only for admin notifications
 
   const jwtToken = signToken(user._id);
   return sendTokenResponse(res, jwtToken, safeUser(user));

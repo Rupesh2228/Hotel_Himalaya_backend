@@ -1,8 +1,6 @@
 const Tour = require('../models/Tour');
 const TourBooking = require('../models/TourBooking');
-const { sendEmail } = require('../services/email.service');
 const { createAdminNotification } = require('../services/notificationService');
-const tourTemplate = require('../templates/tour.template');
 
 const normalizeTourPayload = (payload = {}) => ({
   title: payload.title?.trim() || '',
@@ -127,7 +125,7 @@ const bookTour = async (req, res) => {
     }
 
     const computedPrice = (tour.price - tour.discount) * numGuests;
-    const durationStr = \`\${tour.durationDays} Days / \${tour.durationNights} Nights\`;
+    const durationStr = `${tour.durationDays} Days / ${tour.durationNights} Nights`;
 
     const booking = await TourBooking.create({
       tourId: tour._id,
@@ -143,21 +141,6 @@ const bookTour = async (req, res) => {
       bookedByPhone,
     });
 
-    // Send confirmation email to customer
-    if (bookedByEmail) {
-      const emailSubject = \`Tour Booking Confirmed: \${tour.title} — Hotel Himalaya INN\`;
-      const emailHtml = tourTemplate({
-        customerName: bookedByName,
-        bookingId: booking._id,
-        tourName: tour.title,
-        destination: tour.destination,
-        travelDate: travelDate,
-        duration: durationStr,
-        guests: numGuests,
-        totalPrice: computedPrice,
-      });
-      sendEmail(bookedByEmail, emailSubject, '', emailHtml).catch(e => console.error('Failed to send tour booking email to customer:', e));
-    }
 
     res.status(201).json(booking);
     
@@ -165,9 +148,9 @@ const bookTour = async (req, res) => {
     try {
       createAdminNotification({
         type: 'tour_booking',
-        title: \`New Tour Booking: \${tour.title}\`,
-        message: \`\${bookedByName} booked \${numGuests} guest(s) for \${tour.title} on \${travelDate}.\`,
-        link: \`/admin/tours/bookings/\${booking._id}\`,
+        title: `New Tour Booking: ${tour.title}`,
+        message: `${bookedByName} booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
+        link: `/admin/tours/bookings/${booking._id}`,
         sendEmail: true,
         details: {
           'Tour': tour.title,
@@ -177,7 +160,7 @@ const bookTour = async (req, res) => {
           'Email': bookedByEmail,
           'Phone': bookedByPhone || 'N/A',
           'Guests': numGuests,
-          'Total Price': \`Rs. \${computedPrice}\`
+          'Total Price': `Rs. ${computedPrice}`
         }
       });
     } catch (e) {
