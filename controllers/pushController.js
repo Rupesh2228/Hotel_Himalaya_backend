@@ -23,3 +23,15 @@ exports.subscribe = async (req, res) => {
     res.status(500).json({ error: 'Failed to enable device notifications' });
   }
 };
+
+exports.unsubscribe = async (req, res) => {
+  try {
+    const { endpoint } = req.body;
+    if (!endpoint) return res.status(400).json({ error: 'Subscription endpoint is required' });
+    await PushSubscription.deleteOne({ endpoint, userId: req.user._id });
+    res.json({ message: 'Device notifications disabled' });
+  } catch (error) {
+    console.error('push unsubscribe error:', error);
+    res.status(500).json({ error: 'Failed to disable device notifications' });
+  }
+};
