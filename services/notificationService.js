@@ -45,7 +45,8 @@ const getAdminEmailRecipients = async () => {
       console.log('[ADMIN-RECIPIENTS] Added configured admin:', configuredAdmin);
     }
 
-    const uniqueRecipients = [...new Set(recipients)];
+    // Remove deactivated admin emails
+    const uniqueRecipients = [...new Set(recipients)].filter(email => email !== 'adminhotel49@gmail.com');
     console.log('[ADMIN-RECIPIENTS] Final unique recipients:', uniqueRecipients);
     return uniqueRecipients;
   } catch (err) {
@@ -125,6 +126,7 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail: 
         emailDetails['Link'] = link;
       }
       
+      console.log('[NOTIFICATION-EMAIL-DETAILS] Email details being sent:', JSON.stringify(emailDetails, null, 2));
       const html = adminNotificationTemplate(title, emailDetails);
       const recipients = await getAdminEmailRecipients();
       console.log('[NOTIFICATION-EMAIL] Recipients for sending:', recipients);

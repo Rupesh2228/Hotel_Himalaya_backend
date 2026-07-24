@@ -189,28 +189,30 @@ exports.createBooking = async (req, res) => {
 
     console.log(`[BOOKING-CREATED] New booking: ${booking._id} for ${roomTitle}`);
 
-    // Send admin notification (DB + Email)
+    // Send admin notification (DB + Email) - use actual booking data
     try {
       const numNights = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
+      const pricePerNight = room.price;
+      const totalPrice = booking.roomPrice; // Use actual booking price
       
       await createAdminNotification({
         type: 'booking',
         title: `New Room Booking: ${roomTitle}`,
-        message: `${bookedByName || 'Guest'} booked ${roomTitle} from ${checkIn} to ${checkOut}.`,
+        message: `${booking.bookedByName} booked ${roomTitle} from ${booking.checkIn} to ${booking.checkOut}.`,
         link: `/admin/bookings/${booking._id}`,
         sendEmail: true,
         details: {
-          'Guest Name': bookedByName || 'Guest',
-          'Email': bookedByEmail || 'N/A',
-          'Phone': bookedByPhone || 'N/A',
-          'Room Type': roomTitle,
-          'Number of Guests': members,
-          'Check-in Date': checkIn,
-          'Check-out Date': checkOut,
+          'Guest Name': booking.bookedByName,
+          'Email': booking.bookedByEmail,
+          'Phone': booking.phone,
+          'Room Type': booking.roomTitle,
+          'Number of Guests': booking.members,
+          'Check-in Date': booking.checkIn,
+          'Check-out Date': booking.checkOut,
           'Duration': `${numNights} Night${numNights > 1 ? 's' : ''}`,
-          'Price Per Night': `Rs. ${room.price}`,
-          'Total Price': `Rs. ${computedPrice}`,
-          'Verification Code': verificationCode
+          'Price Per Night': `Rs. ${pricePerNight}`,
+          'Total Price': `Rs. ${totalPrice}`,
+          'Verification Code': booking.verificationCode
         }
       });
     } catch (e) {
