@@ -191,6 +191,8 @@ exports.createBooking = async (req, res) => {
 
     // Send admin notification (DB + Email)
     try {
+      const numNights = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
+      
       await createAdminNotification({
         type: 'booking',
         title: `New Room Booking: ${roomTitle}`,
@@ -200,10 +202,13 @@ exports.createBooking = async (req, res) => {
         details: {
           'Guest Name': bookedByName || 'Guest',
           'Email': bookedByEmail || 'N/A',
-          'Phone': phone || 'N/A',
-          'Room': roomTitle,
-          'Check-in': checkIn,
-          'Check-out': checkOut,
+          'Phone': bookedByPhone || 'N/A',
+          'Room Type': roomTitle,
+          'Number of Guests': members,
+          'Check-in Date': checkIn,
+          'Check-out Date': checkOut,
+          'Duration': `${numNights} Night${numNights > 1 ? 's' : ''}`,
+          'Price Per Night': `Rs. ${room.price}`,
           'Total Price': `Rs. ${computedPrice}`,
           'Verification Code': verificationCode
         }

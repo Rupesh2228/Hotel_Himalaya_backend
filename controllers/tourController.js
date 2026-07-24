@@ -151,13 +151,16 @@ const bookTour = async (req, res) => {
         link: `/admin/tours/bookings/${booking._id}`,
         sendEmail: true,
         details: {
-          'Tour': tour.title,
+          'Tour Name': tour.title,
           'Destination': tour.destination,
+          'Duration': `${tour.durationDays} Days / ${tour.durationNights} Nights`,
           'Travel Date': travelDate,
-          'Guest': bookedByName,
+          'Guest Name': bookedByName,
           'Email': bookedByEmail,
           'Phone': bookedByPhone || 'N/A',
-          'Guests': numGuests,
+          'Number of Guests': numGuests,
+          'Remaining Seats': tour.remainingSeats,
+          'Price Per Person': `Rs. ${tour.price - tour.discount}`,
           'Total Price': `Rs. ${computedPrice}`
         }
       });

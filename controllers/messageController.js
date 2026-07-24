@@ -21,15 +21,16 @@ exports.createMessage = async (req, res) => {
     try {
       await createAdminNotification({
         type: 'message',
-        title: `New Contact Message: ${newMessage.name}`,
+        title: `New Contact Message from ${newMessage.name}`,
         message: `${newMessage.name} (${newMessage.email}) sent a new message.`,
         link: `/admin/messages/${newMessage._id}`,
         sendEmail: true,
         details: {
-          'Name': newMessage.name,
-          'Email': newMessage.email,
-          'Phone': newMessage.phone || 'N/A',
-          'Message': newMessage.message
+          'Sender Name': newMessage.name,
+          'Email Address': newMessage.email,
+          'Phone Number': newMessage.phone || 'N/A',
+          'Message': newMessage.message,
+          'Submitted At': new Date(newMessage.createdAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })
         }
       });
     } catch (e) {

@@ -117,6 +117,8 @@ const bookEvent = async (req, res) => {
 
     // Notify admin about the new event booking
     try {
+      const totalTicketPrice = event.price * ticketCountNum;
+      
       await createAdminNotification({
         type: 'event_booking',
         title: `New Event Booking: ${event.title}`,
@@ -124,12 +126,17 @@ const bookEvent = async (req, res) => {
         link: `/admin/events/bookings/${booking._id}`,
         sendEmail: true,
         details: {
-          'Event': event.title,
-          'Guest': booking.bookedByName,
+          'Event Name': event.title,
+          'Event Date': event.date || 'N/A',
+          'Event Time': event.time || 'N/A',
+          'Location': event.location || 'N/A',
+          'Guest Name': booking.bookedByName,
           'Email': booking.bookedByEmail || 'N/A',
           'Phone': booking.bookedByPhone || 'N/A',
-          'Tickets': booking.ticketsCount,
-          'Total Price': `Rs. ${event.price}`
+          'Available Seats': event.availableSeats,
+          'Tickets Booked': booking.ticketsCount,
+          'Price Per Ticket': `Rs. ${event.price}`,
+          'Total Price': `Rs. ${totalTicketPrice}`
         }
       });
     } catch (e) {
