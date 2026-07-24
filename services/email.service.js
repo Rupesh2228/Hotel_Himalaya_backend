@@ -1,8 +1,8 @@
-const { brevo, transactionalEmailsApi } = require('../config/brevo');
+const { brevoClient } = require('../config/brevo');
 
 /**
- * Send an email to any recipient using Brevo Transactional Email API.
- * Returns the response info on success, or null on failure.
+ * Send an email using Brevo v6 BrevoClient API.
+ * Returns the response on success, or null on failure.
  *
  * @param {string} to        - Recipient email address
  * @param {string} subject   - Email subject line
@@ -18,19 +18,17 @@ const sendEmail = async (to, subject, text, html) => {
 
     const senderEmail = (process.env.SMTP_EMAIL || 'noreply@hotelhimalaya.com').trim();
     const senderName = 'Hotel Himalaya INN';
-
-    const sendSmtpEmail = new brevo.SendSmtpEmail();
-    sendSmtpEmail.subject = subject;
-    sendSmtpEmail.htmlContent = html || `<html><body>${text}</body></html>`;
-    sendSmtpEmail.textContent = text;
-    sendSmtpEmail.sender = { name: senderName, email: senderEmail };
-    sendSmtpEmail.to = [{ email: to }];
-    
-    // Add Reply-To if you want support emails to go to admin
     const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || 'admin@hotelhimalaya.com').trim();
-    sendSmtpEmail.replyTo = { name: 'Support', email: adminEmail };
 
-    const data = await transactionalEmailsApi.sendTransacEmail(sendSmtpEmail);
+    const data = await brevoClient.transactionalEmails.sendTransacEmail({
+      subject,
+      htmlContent: html || `<html><body>${text}</body></html>`,
+      textContent: text,
+      sender: { name: senderName, email: senderEmail },
+      to: [{ email: to }],
+      replyTo: { name: 'Support', email: adminEmail }
+    });
+
     console.log(`[EMAIL] Sent to ${to} — Message ID: ${data.messageId}`);
     return data;
   } catch (error) {

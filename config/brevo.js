@@ -1,16 +1,8 @@
-const brevo = require('@getbrevo/brevo');
+const { BrevoClient } = require('@getbrevo/brevo');
 
-// Initialize Brevo API client
-const defaultClient = brevo.ApiClient.instance;
+// Initialize Brevo client with API key
+const brevoClient = new BrevoClient({
+  apiKey: process.env.BREVO_API_KEY || ''
+});
 
-// Configure API key authorization
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-// Create Transactional Emails API instance
-const transactionalEmailsApi = new brevo.TransactionalEmailsApi();
-
-module.exports = {
-  brevo,
-  transactionalEmailsApi
-};
+module.exports = { brevoClient };
