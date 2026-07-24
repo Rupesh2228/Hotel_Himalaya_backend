@@ -304,7 +304,7 @@ const googleLogin = asyncHandler(async (req, res) => {
       name,
       email,
       avatar: picture,
-      role: "user",
+      role: "pending_admin",
       provider: "google",
       isVerified: true,
     });
