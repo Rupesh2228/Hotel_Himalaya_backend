@@ -20,11 +20,6 @@ const normalizePublicUrl = (req, value) => {
   return value;
 };
 
-// Get all users (for admin)
-const getUsers = async (req, res) => {
-  try {
-    const users = await User.find().select('-password');
-    res.json(users);
 
 // Get all users (for admin)
 const getUsers = async (req, res) => {
