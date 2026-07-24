@@ -108,7 +108,7 @@ exports.getBookings = async (req, res) => {
 
 exports.createBooking = async (req, res) => {
   try {
-    const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail } = req.body;
+    const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail, phone } = req.body;
 
     if (!roomId || !roomTitle || !checkIn || !checkOut || !members) {
       return res.status(400).json({ error: 'Room, members, check-in, and check-out are required' });
@@ -157,6 +157,7 @@ exports.createBooking = async (req, res) => {
       bookedBy: bookedBy || 'guest',
       bookedByName: bookedByName || 'Guest',
       bookedByEmail: bookedByEmail || '',
+      phone: phone || '',
     });
 
     // Send Email alert to admin (fire-and-forget)

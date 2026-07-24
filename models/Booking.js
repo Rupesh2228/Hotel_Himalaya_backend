@@ -12,6 +12,7 @@ const bookingSchema = new mongoose.Schema({
   bookedBy: { type: String, default: 'guest' },
   bookedByName: { type: String, default: 'Guest' },
   bookedByEmail: { type: String, default: '' },
+  phone: { type: String, default: '' },
   verified: { type: Boolean, default: false },
   verifiedAt: { type: Date, default: null },
   verifiedBy: { type: String, default: '' },
