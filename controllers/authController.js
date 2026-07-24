@@ -269,7 +269,7 @@ const login = asyncHandler(async (req, res) => {
  * @access Public
  */
 const googleLogin = asyncHandler(async (req, res) => {
-  const { credential } = req.body;
+  const { credential, isAdminLogin } = req.body;
   if (!credential) throw new AppError("Google token credential is required.", 400);
 
   const ticket = await googleClient.verifyIdToken({
@@ -291,13 +291,19 @@ const googleLogin = asyncHandler(async (req, res) => {
       name,
       email,
       avatar: picture,
-      role: "pending_admin",
+      role: isAdminLogin ? "pending_admin" : "user",
       provider: "google",
       isVerified: true,
     });
   } else {
     user.avatar = picture || user.avatar;
     if (!user.provider && !user.password) user.provider = "google";
+    
+    // If they were a normal user but are trying to log in as admin, mark them pending
+    if (isAdminLogin && user.role === "user") {
+      user.role = "pending_admin";
+    }
+    
     user.lastLogin = new Date();
     await user.save();
   }

@@ -339,7 +339,7 @@ const updateUserRole = async (req, res) => {
     const { id } = req.params;
     const { role } = req.body;
 
-    if (!['user', 'admin'].includes(role)) {
+    if (!['user', 'admin', 'pending_admin'].includes(role)) {
       return res.status(400).json({ error: 'Role must be either user or admin' });
     }
 
