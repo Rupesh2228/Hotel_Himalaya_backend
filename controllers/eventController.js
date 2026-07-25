@@ -2,6 +2,34 @@ const Event = require('../models/Event');
 const EventBooking = require('../models/EventBooking');
 const { createAdminNotification } = require('../services/notificationService');
 
+const EVENT_DEFAULT_DURATION_MINUTES = 240;
+
+const parseEventDateTime = (date, time) => {
+  if (!date || !time) return null;
+  const dateString = String(date).trim();
+  const timeString = String(time).trim();
+  const dateTime = new Date(`${dateString}T${timeString}`);
+  return Number.isNaN(dateTime.getTime()) ? null : dateTime;
+};
+
+const getEventBookingStatus = (event) => {
+  if (!event) return 'Upcoming';
+  const startDateTime = parseEventDateTime(event.date, event.time);
+  if (!startDateTime) return 'Upcoming';
+
+  const now = new Date();
+  const endDateTime = new Date(startDateTime.getTime() + EVENT_DEFAULT_DURATION_MINUTES * 60 * 1000);
+
+  if (now < startDateTime) return 'Upcoming';
+  if (now >= startDateTime && now < endDateTime) return 'Ongoing';
+  return 'Completed';
+};
+
+const serializeEventBooking = (booking) => ({
+  ...booking.toObject(),
+  status: getEventBookingStatus(booking.eventId) || booking.status || 'Upcoming',
+});
+
 // Create Event (Admin only)
 const createEvent = async (req, res) => {
   try {
@@ -152,8 +180,8 @@ const bookEvent = async (req, res) => {
 // Get User Bookings
 const getUserBookings = async (req, res) => {
   try {
-    const bookings = await EventBooking.find({ bookedBy: req.user._id }).sort({ createdAt: -1 });
-    res.json(bookings);
+    const bookings = await EventBooking.find({ bookedBy: req.user._id }).populate('eventId').sort({ createdAt: -1 });
+    res.json(bookings.map(serializeEventBooking));
   } catch (err) {
     console.error('getUserBookings error:', err);
     res.status(500).json({ error: 'Failed to fetch user bookings' });
@@ -163,8 +191,8 @@ const getUserBookings = async (req, res) => {
 // Get All Event Bookings (Admin only)
 const getAllBookings = async (req, res) => {
   try {
-    const bookings = await EventBooking.find().sort({ createdAt: -1 });
-    res.json(bookings);
+    const bookings = await EventBooking.find().populate('eventId').sort({ createdAt: -1 });
+    res.json(bookings.map(serializeEventBooking));
   } catch (err) {
     console.error('getAllBookings error:', err);
     res.status(500).json({ error: 'Failed to fetch all bookings' });
