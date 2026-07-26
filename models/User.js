@@ -92,7 +92,6 @@ const userSchema = new mongoose.Schema(
 
 // Add indexes for efficient admin queries
 userSchema.index({ role: 1, isVerified: 1 });
-userSchema.index({ email: 1 });
 userSchema.index({ createdAt: -1 });
 
 /**
