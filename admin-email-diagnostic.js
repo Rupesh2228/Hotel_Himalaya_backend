@@ -25,12 +25,11 @@ async function runDiagnostics() {
     console.log(`   ${key}: ${value}`);
   });
 
-  const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '').trim().toLowerCase();
-  if (!adminEmail) {
-    console.error('\n   ❌ ERROR: No ADMIN_EMAIL configured!');
-    return;
+  const adminEmail = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || 'adminhotel49@gmail.com').trim().toLowerCase();
+  if (!process.env.ADMIN_EMAIL && !process.env.GOOGLE_ADMIN_EMAIL) {
+    console.warn('\n   ⚠ WARNING: No ADMIN_EMAIL/GOOGLE_ADMIN_EMAIL configured. Defaulting to adminhotel49@gmail.com for compatibility.');
   }
-  console.log('   ✓ Admin email configured:', adminEmail);
+  console.log('   ✓ Admin email configured or defaulted:', adminEmail);
 
   // 2. Connect to database
   console.log('\n2. DATABASE CONNECTION CHECK:');

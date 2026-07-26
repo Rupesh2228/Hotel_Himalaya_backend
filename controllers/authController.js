@@ -33,7 +33,7 @@ const ADMIN_EMAIL = (
 ).toLowerCase();
 
 if (!ADMIN_EMAIL) {
-  console.warn('[AUTH] WARNING: ADMIN_EMAIL is not set. Google sign-in cannot grant administrator access.');
+  console.warn('[AUTH] WARNING: ADMIN_EMAIL/GOOGLE_ADMIN_EMAIL not configured. Admin access via Google Sign-In disabled.');
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

@@ -1,7 +1,4 @@
 const Notification = require('../models/Notification');
-const User = require('../models/User');
-const { sendEmail } = require('./email.service');
-const adminNotificationTemplate = require('../templates/adminNotification.template');
 const PushSubscription = require('../models/PushSubscription');
 const webpush = require('web-push');
 
@@ -29,129 +26,16 @@ const sendPushNotifications = async ({ title, message, link }) => {
   }));
 };
 
-const getAdminEmailRecipients = async () => {
-  try {
-    const adminUsers = await User.find({ role: 'admin', isVerified: true }).select('email').lean();
-    const recipients = adminUsers.map((admin) => admin.email?.trim().toLowerCase()).filter(Boolean);
-    console.log('[ADMIN-RECIPIENTS] Found admin users from database:', recipients);
-
-    // Keep the configured main admin as a fallback while older user records are migrated.
-    const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
-      .trim()
-      .toLowerCase();
-    
-    if (configuredAdmin) {
-      recipients.push(configuredAdmin);
-      console.log('[ADMIN-RECIPIENTS] Added configured admin:', configuredAdmin);
-    }
-
-    // Remove deactivated admin emails
-    const uniqueRecipients = [...new Set(recipients)].filter(email => email !== 'adminhotel49@gmail.com');
-    console.log('[ADMIN-RECIPIENTS] Final unique recipients:', uniqueRecipients);
-    return uniqueRecipients;
-  } catch (err) {
-    console.error('[ADMIN-RECIPIENTS] Error fetching admin recipients:', err);
-    // Fallback to configured admin even if database query fails
-    const configuredAdmin = (process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || '')
-      .trim()
-      .toLowerCase();
-    if (configuredAdmin) {
-      console.log('[ADMIN-RECIPIENTS] Using fallback configured admin:', configuredAdmin);
-      return [configuredAdmin];
-    }
-    return [];
-  }
-};
-
 /**
- * Notify other admins that an admin has logged in (security alert).
- * Excludes the admin who just logged in from the recipients list.
+ * Create a notification in database only. Email alerts are disabled.
+ * Push notifications are still sent if configured.
  */
-const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
-  try {
-    const allRecipients = await getAdminEmailRecipients();
-    // Exclude the admin who just logged in from notifications
-    const otherAdmins = allRecipients.filter(email => email !== adminEmail?.toLowerCase());
-
-    if (otherAdmins.length === 0) {
-      console.log('[ADMIN-LOGIN-NOTIFICATION] No other admins to notify');
-      return;
-    }
-
-    const adminLoginTemplate = require('../templates/adminLogin.template');
-    const subject = `🔐 Admin Login: ${adminName}`;
-    const body = `${adminName} logged into the admin dashboard.`;
-    const html = adminLoginTemplate(adminName, adminEmail, loginDetails);
-
-    console.log('[ADMIN-LOGIN-NOTIFICATION] Sending login alerts to', otherAdmins.length, 'admin(s)');
-    const results = await Promise.allSettled(
-      otherAdmins.map((email) => sendEmail(email, subject, body, html))
-    );
-
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        console.log(`[ADMIN-LOGIN-NOTIFICATION] Successfully sent to ${otherAdmins[index]}`);
-      } else {
-        console.error(`[ADMIN-LOGIN-NOTIFICATION] Failed to send to ${otherAdmins[index]}:`, result.reason);
-      }
-    });
-  } catch (e) {
-    console.error('[ADMIN-LOGIN-NOTIFICATION] Error:', e && e.message ? e.message : e);
-  }
-};
-
-/**
- * Create a notification for all admins and optionally send them an email.
- * This is fire-and-forget; errors are logged but not thrown.
- */
-const createAdminNotification = async ({ type, title, message, link, sendEmail: shouldSendEmail = true, details = {} }) => {
+const createAdminNotification = async ({ type, title, message, link, details = {} }) => {
   try {
     await Notification.create({ type, title, message, link });
-    console.log('[NOTIFICATION] Created admin notification in database:', type);
+    console.log('[NOTIFICATION] Created notification in database:', type);
   } catch (err) {
-    console.error('[NOTIFICATION] Failed to create admin notification:', err && err.message ? err.message : err);
-  }
-
-  if (shouldSendEmail) {
-    try {
-      const subject = `${title}`;
-      const body = `${message}\n${link ? `Link: ${link}` : ''}`;
-      
-      const emailDetails = {
-        'Message': message,
-        ...details
-      };
-      
-      if (link) {
-        emailDetails['Link'] = link;
-      }
-      
-      console.log('[NOTIFICATION-EMAIL-DETAILS] Email details being sent:', JSON.stringify(emailDetails, null, 2));
-      const html = adminNotificationTemplate(title, emailDetails);
-      const recipients = await getAdminEmailRecipients();
-      console.log('[NOTIFICATION-EMAIL] Recipients for sending:', recipients);
-
-      if (!recipients.length) {
-        console.warn('[EMAIL] Cannot send admin alert — no administrator email is configured.');
-        return;
-      }
-
-      console.log('[NOTIFICATION-EMAIL] Sending notification email to', recipients.length, 'recipients');
-      const results = await Promise.allSettled(
-        recipients.map((email) => sendEmail(email, subject, body, html))
-      );
-      
-      // Log the results
-      results.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          console.log(`[NOTIFICATION-EMAIL] Successfully sent to ${recipients[index]}`);
-        } else {
-          console.error(`[NOTIFICATION-EMAIL] Failed to send to ${recipients[index]}:`, result.reason);
-        }
-      });
-    } catch (e) {
-      console.error('[NOTIFICATION-EMAIL] Failed to send admin notification email:', e && e.message ? e.message : e);
-    }
+    console.error('[NOTIFICATION] Failed to create notification:', err && err.message ? err.message : err);
   }
 
   try {
@@ -159,6 +43,13 @@ const createAdminNotification = async ({ type, title, message, link, sendEmail: 
   } catch (error) {
     console.error('[PUSH-NOTIFICATION] Failed to send device notifications:', error.message);
   }
+};
+
+/**
+ * Admin login notification disabled - no email alerts.
+ */
+const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
+  console.log(`[ADMIN-LOGIN] Admin logged in: ${adminName} (${adminEmail})`);
 };
 
 module.exports = { createAdminNotification, notifyAdminLogin };

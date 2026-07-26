@@ -151,39 +151,10 @@ app.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
 });
 
-// ── Connect to database & seed admin ─────────────────────────────────────────
+// ── Connect to database ──────────────────────────────────────────────────────
 connectDB()
   .then(async () => {
-    try {
-      const User = require("./models/User");
-      const bcrypt = require("bcryptjs");
-      const adminEmail = "adminhotel49@gmail.com";
-
-      const adminExists = await User.findOne({ email: adminEmail });
-      if (!adminExists) {
-        const salt = await bcrypt.genSalt(12);
-        const hashedPassword = await bcrypt.hash("himalayan_hotel48", salt);
-        await User.create({
-          name: "Himalayan Admin",
-          email: adminEmail,
-          password: hashedPassword,
-          role: "admin",
-          provider: "local",
-          isVerified: true,
-        });
-        console.log("✓ Admin user created");
-      } else {
-        if (!adminExists.isVerified) {
-          adminExists.isVerified = true;
-          await adminExists.save();
-          console.log("✓ Admin user verified (migrated)");
-        } else {
-          console.log("✓ Admin user exists");
-        }
-      }
-    } catch (err) {
-      console.error("⚠ Admin seeding error:", err.message);
-    }
+    console.log("✓ Database connected successfully");
   })
   .catch((err) => {
     console.error("Database connection error:", err.message);
