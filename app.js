@@ -91,7 +91,48 @@ app.use((req, res, next) => {
 app.use(hpp());           // prevent HTTP Parameter Pollution
 
 // ── Compression ───────────────────────────────────────────────────────────────
-app.use(compression());
+// Aggressive compression for slow networks (max compression)
+app.use(compression({
+  level: 9,                    // Maximum compression (1-9)
+  threshold: 0,                // Compress everything, even small responses
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  }
+}));
+
+// ── Caching headers for static assets ───────────────────────────────────────
+app.use((req, res, next) => {
+  if (req.url.startsWith('/uploads')) {
+    res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  next();
+});
+
+// ── API Response Caching (5 minute cache for frequently accessed data) ───────
+const apiCache = new Map();
+const cacheMiddleware = (duration = 300) => (req, res, next) => {
+  if (req.method !== 'GET') return next();
+  const key = req.originalUrl || req.url;
+  const cached = apiCache.get(key);
+  if (cached && Date.now() - cached.timestamp < duration * 1000) {
+    res.set('X-Cache', 'HIT');
+    return res.json(cached.data);
+  }
+  const originalJson = res.json;
+  res.json = function(data) {
+    if (res.statusCode === 200) apiCache.set(key, { data, timestamp: Date.now() });
+    return originalJson.call(this, data);
+  };
+  next();
+};
+
+// ── Network-aware optimization ──────────────────────────────────────────────
+app.use((req, res, next) => {
+  const saveData = req.get('save-data') === 'on';
+  res.locals.slowNetwork = saveData;
+  next();
+});
 
 // ── Health & root endpoints ───────────────────────────────────────────────────
 app.get("/", (req, res) => {

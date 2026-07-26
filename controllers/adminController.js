@@ -21,11 +21,22 @@ const normalizePublicUrl = (req, value) => {
 };
 
 
-// Get all users (for admin)
+// Get all users (for admin) with pagination
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find().select('-password');
-    res.json(users);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [users, total] = await Promise.all([
+      User.find().select('-password').skip(skip).limit(limit).lean().sort({ createdAt: -1 }),
+      User.countDocuments()
+    ]);
+
+    res.json({
+      data: users,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
   } catch (err) {
     console.error('getUsers error:', err);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -91,14 +102,30 @@ const addGalleryImage = async (req, res) => {
   }
 };
 
-// Public: get all gallery images
+// Public: get all gallery images with pagination and .lean()
 const getGalleryImages = async (req, res) => {
   try {
-    const images = await GalleryImage.find().populate('category').sort({ createdAt: -1 }).lean();
-    res.json(images.map((image) => ({
-      ...image,
-      url: normalizePublicUrl(req, image.url),
-    })));
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [images, total] = await Promise.all([
+      GalleryImage.find()
+        .populate('category', 'name')
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .sort({ createdAt: -1 }),
+      GalleryImage.countDocuments()
+    ]);
+
+    res.json({
+      data: images.map((image) => ({
+        ...image,
+        url: normalizePublicUrl(req, image.url),
+      })),
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
   } catch (err) {
     console.error('getGalleryImages error:', err);
     res.status(500).json({ error: 'Failed to fetch gallery images' });
@@ -177,22 +204,44 @@ const deleteRoom = async (req, res) => {
   }
 };
 
-// Public: get all rooms
+// Public: get all rooms with pagination and .lean()
 const getRooms = async (req, res) => {
   try {
-    const rooms = await Room.find().sort({ createdAt: -1 });
-    res.json(rooms);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [rooms, total] = await Promise.all([
+      Room.find().skip(skip).limit(limit).lean().sort({ createdAt: -1 }),
+      Room.countDocuments()
+    ]);
+
+    res.json({
+      data: rooms,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
   } catch (err) {
     console.error('getRooms error:', err);
     res.status(500).json({ error: 'Failed to fetch rooms' });
   }
 };
 
-// Get all attractions
+// Get all attractions with pagination and .lean()
 const getAttractions = async (req, res) => {
   try {
-    const attractions = await Attraction.find().sort({ createdAt: -1 });
-    res.json(attractions);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+
+    const [attractions, total] = await Promise.all([
+      Attraction.find().skip(skip).limit(limit).lean().sort({ createdAt: -1 }),
+      Attraction.countDocuments()
+    ]);
+
+    res.json({
+      data: attractions,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
   } catch (err) {
     console.error('getAttractions error:', err);
     res.status(500).json({ error: 'Failed to fetch attractions' });

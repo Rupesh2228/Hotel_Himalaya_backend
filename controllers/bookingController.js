@@ -77,17 +77,14 @@ const findBookingByIdentifier = async (identifier) => {
 const deleteExpiredBookings = async () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const allBookings = await Booking.find({});
-  const expiredIds = allBookings
-    .filter((booking) => {
-      const checkOutDate = parseDate(booking.checkOut);
-      return checkOutDate && checkOutDate < today;
-    })
-    .map((booking) => booking._id);
+  
+  // Use date query instead of loading all bookings into memory
+  const expiredResult = await Booking.deleteMany({
+    checkOut: { $lt: today.toISOString().split('T')[0] }
+  });
 
-  if (expiredIds.length > 0) {
-    await Booking.deleteMany({ _id: { $in: expiredIds } });
-    console.log(`[CLEANUP] Deleted ${expiredIds.length} expired booking(s)`);
+  if (expiredResult.deletedCount > 0) {
+    console.log(`[CLEANUP] Deleted ${expiredResult.deletedCount} expired booking(s)`);
   }
 
   // Also delete unverified bookings older than 1 hour (prevent stale unverified bookings)
@@ -106,12 +103,24 @@ exports.getBookings = async (req, res) => {
   try {
     await deleteExpiredBookings();
 
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip = (page - 1) * limit;
+    
     const { bookedBy, bookedByEmail } = req.query;
     const filter = bookedByEmail
       ? { bookedByEmail }
       : (bookedBy ? { bookedBy } : {});
-    const bookings = await Booking.find(filter).sort({ createdAt: -1 });
-    res.json(bookings.map(serializeBooking));
+
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter).skip(skip).limit(limit).lean().sort({ createdAt: -1 }),
+      Booking.countDocuments(filter)
+    ]);
+
+    res.json({
+      data: bookings.map(serializeBooking),
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+    });
   } catch (error) {
     console.error('getBookings error:', error);
     res.status(500).json({ error: 'Failed to fetch bookings' });
@@ -147,7 +156,7 @@ exports.createBooking = async (req, res) => {
       roomId, 
       verified: true,
       status: { $ne: 'Cancelled' }
-    });
+    }).select('checkIn checkOut _id').lean();
     
     console.log(`[BOOKING-CHECK] Checking ${verifiedBookings.length} verified booking(s) for room ${roomTitle}`);
     

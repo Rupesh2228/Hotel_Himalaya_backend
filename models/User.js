@@ -90,6 +90,11 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Add indexes for efficient admin queries
+userSchema.index({ role: 1, isVerified: 1 });
+userSchema.index({ email: 1 });
+userSchema.index({ createdAt: -1 });
+
 /**
  * Generate a secure password-reset token.
  * Stores the hashed version in DB; returns the raw token to embed in the email link.
