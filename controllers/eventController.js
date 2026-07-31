@@ -1,6 +1,9 @@
 const Event = require('../models/Event');
 const EventBooking = require('../models/EventBooking');
 const { createAdminNotification } = require('../services/notificationService');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+const JWT_SECRET = process.env.JWT_SECRET || 'dev_hotel_jwt_secret';
 
 const EVENT_DEFAULT_DURATION_MINUTES = 240;
 
@@ -25,10 +28,13 @@ const getEventBookingStatus = (event) => {
   return 'Completed';
 };
 
-const serializeEventBooking = (booking) => ({
-  ...booking.toObject(),
-  status: getEventBookingStatus(booking.eventId) || booking.status || 'Upcoming',
-});
+const serializeEventBooking = (booking) => {
+  const data = typeof booking.toObject === 'function' ? booking.toObject() : booking;
+  return {
+    ...data,
+    status: getEventBookingStatus(data.eventId) || data.status || 'Upcoming',
+  };
+};
 
 // Create Event (Admin only)
 const createEvent = async (req, res) => {
@@ -130,13 +136,27 @@ const bookEvent = async (req, res) => {
     event.availableSeats -= ticketCountNum;
     await event.save();
 
+    // Try to extract user from token (optional auth)
+    let userId = null;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
+        const foundUser = await User.findById(decoded.id).select('_id name email');
+        if (foundUser) {
+          userId = foundUser._id;
+          req.user = foundUser;
+        }
+      } catch (_) { /* token invalid or expired, continue as guest */ }
+    }
+
     // Create booking
     const booking = await EventBooking.create({
       eventId: event._id,
       eventTitle: event.title,
       eventPrice: event.price,
       ticketsCount: ticketCountNum,
-      bookedBy: req.user ? req.user._id : 'guest',
+      bookedBy: userId || 'guest',
       bookedByName: bookedByName || (req.user ? req.user.name : 'Guest'),
       bookedByEmail: bookedByEmail || (req.user ? req.user.email : ''),
       bookedByPhone: bookedByPhone || ''
@@ -177,14 +197,32 @@ const bookEvent = async (req, res) => {
   }
 };
 
-// Get User Bookings
+// Get User Bookings (by user ID or email)
 const getUserBookings = async (req, res) => {
   try {
-    const bookings = await EventBooking.find({ bookedBy: req.user._id }).populate('eventId').sort({ createdAt: -1 });
+    const bookings = await EventBooking.find({
+      $or: [
+        { bookedBy: req.user._id },
+        { bookedByEmail: req.user.email }
+      ]
+    }).populate('eventId').sort({ createdAt: -1 });
     res.json(bookings.map(serializeEventBooking));
   } catch (err) {
     console.error('getUserBookings error:', err);
     res.status(500).json({ error: 'Failed to fetch user bookings' });
+  }
+};
+
+// Get User Bookings by email (public fallback)
+const getUserBookingsByEmail = async (req, res) => {
+  try {
+    const { email } = req.query;
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+    const bookings = await EventBooking.find({ bookedByEmail: email }).populate('eventId').sort({ createdAt: -1 });
+    res.json(bookings.map(serializeEventBooking));
+  } catch (err) {
+    console.error('getUserBookingsByEmail error:', err);
+    res.status(500).json({ error: 'Failed to fetch bookings' });
   }
 };
 
@@ -228,6 +266,7 @@ module.exports = {
   getEvents,
   bookEvent,
   getUserBookings,
+  getUserBookingsByEmail,
   getAllBookings,
   deleteBooking,
 };

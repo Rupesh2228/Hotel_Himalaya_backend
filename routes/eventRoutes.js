@@ -9,6 +9,7 @@ const {
   getEvents,
   bookEvent,
   getUserBookings,
+  getUserBookingsByEmail,
   getAllBookings,
   deleteBooking,
 } = require('../controllers/eventController');
@@ -19,6 +20,7 @@ router.post('/book', bookEvent);
 
 // Private (Registered Users)
 router.get('/my-bookings', protect, getUserBookings);
+router.get('/my-bookings-by-email', getUserBookingsByEmail);
 
 // Admin Only
 router.post('/', protect, isAdmin, createEvent);
