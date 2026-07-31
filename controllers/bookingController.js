@@ -61,10 +61,13 @@ const generateVerificationCode = async () => {
   throw new Error('Failed to generate a unique verification code');
 };
 
-const serializeBooking = (booking) => ({
-  ...booking.toObject(),
-  status: getComputedStatus(booking),
-});
+const serializeBooking = (booking) => {
+  const data = typeof booking.toObject === 'function' ? booking.toObject() : booking;
+  return {
+    ...data,
+    status: getComputedStatus(booking),
+  };
+};
 
 const findBookingByIdentifier = async (identifier) => {
   if (!identifier) return null;
