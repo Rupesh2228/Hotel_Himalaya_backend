@@ -188,9 +188,8 @@ exports.createBooking = async (req, res) => {
       return res.status(404).json({ error: 'Selected room not found' });
     }
 
-    // Block bookings for rooms marked unavailable by admin
-    if (room.isAvailable === false) {
-      return res.status(400).json({ error: 'Selected room is currently unavailable' });
+    if (Number(members) > Number(room.totalMembers || 0)) {
+      return res.status(400).json({ error: `Selected room allows only ${room.totalMembers || 1} members` });
     }
 
     const days = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
