@@ -127,8 +127,16 @@ exports.getBookings = async (req, res) => {
   }
 };
 
+const { validationResult } = require('express-validator');
+
 exports.createBooking = async (req, res) => {
   try {
+    // Validate request from bookingValidator middleware
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: errors.array()[0].msg });
+    }
+
     // Clean up expired/old unverified bookings first
     await deleteExpiredBookings();
 
@@ -175,6 +183,11 @@ exports.createBooking = async (req, res) => {
     const room = await Room.findById(roomId);
     if (!room) {
       return res.status(404).json({ error: 'Selected room not found' });
+    }
+
+    // Block bookings for rooms marked unavailable by admin
+    if (room.isAvailable === false) {
+      return res.status(400).json({ error: 'Selected room is currently unavailable' });
     }
 
     const days = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;

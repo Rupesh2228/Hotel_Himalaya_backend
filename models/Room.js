@@ -6,6 +6,8 @@ const roomSchema = new mongoose.Schema({
   price: { type: Number, default: 0 },
   totalMembers: { type: Number, default: 2 },
   images: { type: [String], default: [] },
+  // Admin-controlled availability flag. Default true to keep existing behavior.
+  isAvailable: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now, index: true },
 });
 

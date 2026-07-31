@@ -135,7 +135,7 @@ const getGalleryImages = async (req, res) => {
 // Add a room (admin)
 const addRoom = async (req, res) => {
   try {
-    const { title, description, price, totalMembers, images } = req.body;
+    const { title, description, price, totalMembers, images, isAvailable } = req.body;
     if (!title) return res.status(400).json({ error: 'Room title is required' });
 
     const room = await Room.create({
@@ -144,6 +144,7 @@ const addRoom = async (req, res) => {
       price,
       totalMembers: Number(totalMembers) || 1,
       images: Array.isArray(images) ? images : (images ? images.split(',').map((s) => s.trim()) : []),
+      isAvailable: isAvailable === undefined ? true : !!isAvailable,
     });
     res.status(201).json(room);
   } catch (err) {
@@ -156,7 +157,7 @@ const addRoom = async (req, res) => {
 const updateRoom = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, price, totalMembers, images } = req.body;
+    const { title, description, price, totalMembers, images, isAvailable } = req.body;
     if (!title) return res.status(400).json({ error: 'Room title is required' });
 
     const existingRoom = await Room.findById(id);
@@ -172,15 +173,22 @@ const updateRoom = async (req, res) => {
       ? Number(totalMembers) || existingRoom.totalMembers || 1
       : existingRoom.totalMembers || 1;
 
+    const updatePayload = {
+      title,
+      description,
+      price,
+      totalMembers: normalizedTotalMembers,
+      images: normalizedImages,
+    };
+
+    // Allow admins to toggle availability explicitly
+    if (typeof isAvailable !== 'undefined') {
+      updatePayload.isAvailable = !!isAvailable;
+    }
+
     const room = await Room.findByIdAndUpdate(
       id,
-      {
-        title,
-        description,
-        price,
-        totalMembers: normalizedTotalMembers,
-        images: normalizedImages,
-      },
+      updatePayload,
       { new: true }
     );
     if (!room) return res.status(404).json({ error: 'Room not found' });
