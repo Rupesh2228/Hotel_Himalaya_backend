@@ -12,6 +12,13 @@ const tourBookingSchema = new mongoose.Schema({
   bookedByName: { type: String, required: true },
   bookedByEmail: { type: String, required: true },
   bookedByPhone: { type: String, default: '' },
+  deviceId: { type: String, default: '' },
+  tourCoverImage: { type: String, default: '' },
+  adults: { type: Number, default: 0 },
+  children: { type: Number, default: 0 },
+  country: { type: String, default: '' },
+  address: { type: String, default: '' },
+  paymentMethod: { type: String, default: 'pay_at_site' },
   status: { type: String, default: 'Confirmed' },
   createdAt: { type: Date, default: Date.now },
 });

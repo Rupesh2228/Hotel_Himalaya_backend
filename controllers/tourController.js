@@ -130,15 +130,23 @@ const bookTour = async (req, res) => {
     const booking = await TourBooking.create({
       tourId: tour._id,
       tourName: tour.title,
+      tourCoverImage: req.body.tourCoverImage || tour.coverImage || '',
       destination: tour.destination,
       duration: durationStr,
       travelDate,
       guests: numGuests,
+      adults: Number(req.body.adults || 0),
+      children: Number(req.body.children || 0),
       totalPrice: computedPrice,
       bookedBy: req.user ? req.user._id : null,
       bookedByName,
       bookedByEmail,
       bookedByPhone,
+      deviceId: req.body.deviceId || '',
+      country: req.body.country || '',
+      address: req.body.address || '',
+      paymentMethod: req.body.paymentMethod || 'pay_at_site',
+      status: 'Pending'
     });
 
 
@@ -174,4 +182,36 @@ const bookTour = async (req, res) => {
   }
 };
 
-module.exports = { createTour, getTours, updateTour, deleteTour, bookTour };
+const getUserBookings = async (req, res) => {
+  try {
+    const bookings = await TourBooking.find({
+      $or: [
+        { bookedBy: req.user._id },
+        { bookedByEmail: req.user.email }
+      ]
+    }).populate('tourId').sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (err) {
+    console.error('getUserBookings error:', err);
+    res.status(500).json({ error: 'Failed to fetch user bookings' });
+  }
+};
+
+const getUserBookingsGuest = async (req, res) => {
+  try {
+    const { email, deviceId } = req.query;
+    if (!email && !deviceId) return res.status(400).json({ error: 'Email or deviceId is required' });
+    
+    const query = { $or: [] };
+    if (email) query.$or.push({ bookedByEmail: email });
+    if (deviceId) query.$or.push({ deviceId: deviceId });
+    
+    const bookings = await TourBooking.find(query).populate('tourId').sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (err) {
+    console.error('getUserBookingsGuest error:', err);
+    res.status(500).json({ error: 'Failed to fetch bookings' });
+  }
+};
+
+module.exports = { createTour, getTours, updateTour, deleteTour, bookTour, getUserBookings, getUserBookingsGuest };

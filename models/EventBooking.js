@@ -10,6 +10,7 @@ const eventBookingSchema = new mongoose.Schema({
   bookedByEmail: { type: String, default: '' },
   bookedByPhone: { type: String, default: '' },
   status: { type: String, default: 'Booked' },
+  deviceId: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
 });
 

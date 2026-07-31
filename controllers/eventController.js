@@ -159,7 +159,8 @@ const bookEvent = async (req, res) => {
       bookedBy: userId || 'guest',
       bookedByName: bookedByName || (req.user ? req.user.name : 'Guest'),
       bookedByEmail: bookedByEmail || (req.user ? req.user.email : ''),
-      bookedByPhone: bookedByPhone || ''
+      bookedByPhone: bookedByPhone || '',
+      deviceId: req.body.deviceId || ''
     });
 
 
@@ -213,12 +214,17 @@ const getUserBookings = async (req, res) => {
   }
 };
 
-// Get User Bookings by email (public fallback)
+// Get User Bookings by email or deviceId (public fallback)
 const getUserBookingsByEmail = async (req, res) => {
   try {
-    const { email } = req.query;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-    const bookings = await EventBooking.find({ bookedByEmail: email }).populate('eventId').sort({ createdAt: -1 });
+    const { email, deviceId } = req.query;
+    if (!email && !deviceId) return res.status(400).json({ error: 'Email or deviceId is required' });
+    
+    const query = { $or: [] };
+    if (email) query.$or.push({ bookedByEmail: email });
+    if (deviceId) query.$or.push({ deviceId: deviceId });
+    
+    const bookings = await EventBooking.find(query).populate('eventId').sort({ createdAt: -1 });
     res.json(bookings.map(serializeEventBooking));
   } catch (err) {
     console.error('getUserBookingsByEmail error:', err);
