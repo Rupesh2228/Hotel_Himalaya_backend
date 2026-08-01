@@ -1,9 +1,27 @@
 const express = require('express');
-const router = express.Router();
-const { getAttractions, getAttractionById } = require('../controllers/adminController');
+const {
+  getAttractions,
+  getAttractionBySlug,
+  createAttraction,
+  updateAttraction,
+  deleteAttraction
+} = require('../controllers/attractionController');
 
-// Public attraction listing
-router.get('/', getAttractions);
-router.get('/:id', getAttractionById);
+const { protect, isAdmin } = require('../middleware/authMiddleware');
+
+const router = express.Router();
+
+router
+  .route('/')
+  .get(getAttractions)
+  .post(protect, isAdmin, createAttraction);
+
+router.route('/slug/:slug').get(getAttractionBySlug);
+
+router
+  .route('/:id')
+  .get(require('../controllers/adminController').getAttractionById) // Kept for backward compatibility
+  .put(protect, isAdmin, updateAttraction)
+  .delete(protect, isAdmin, deleteAttraction);
 
 module.exports = router;

@@ -28,6 +28,9 @@ const eventRoutes = require("./routes/eventRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const tourRoutes = require("./routes/tourRoutes");
 const pastEventRoutes = require("./routes/pastEventRoutes");
+const blogRoutes = require("./routes/blogRoutes");
+const seoRoutes = require("./seo/seoRoutes");
+const sitemapController = require("./seo/sitemapController");
 
 const app = express();
 
@@ -176,6 +179,9 @@ app.use("/api/events", eventRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/past-events", pastEventRoutes);
+app.use("/api/blogs", blogRoutes);
+app.use("/api/seo", seoRoutes);
+app.get("/sitemap.xml", sitemapController.generateSitemap);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((req, res) => {
