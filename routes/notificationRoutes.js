@@ -6,7 +6,8 @@ const { isAdmin } = require('../middleware/adminMiddleware');
 const { getPublicKey, subscribe, unsubscribe } = require('../controllers/pushController');
 
 router.get('/', protect, isAdmin, getNotifications);
-router.get('/push/public-key', protect, isAdmin, getPublicKey);
+// Public endpoint: VAPID public key is safe to expose to clients
+router.get('/push/public-key', getPublicKey);
 router.post('/push/subscribe', protect, isAdmin, subscribe);
 router.delete('/push/subscribe', protect, isAdmin, unsubscribe);
 router.post('/read-all', protect, isAdmin, markAllAsRead);
