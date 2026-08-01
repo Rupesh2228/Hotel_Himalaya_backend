@@ -143,7 +143,7 @@ exports.createBooking = async (req, res) => {
     // Clean up expired/old unverified bookings first
     await deleteExpiredBookings();
 
-    const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail, phone } = req.body;
+    const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail, phone, address } = req.body;
 
     if (!roomId || !roomTitle || !checkIn || !checkOut || !members) {
       return res.status(400).json({ error: 'Room, members, check-in, and check-out are required' });
@@ -161,22 +161,22 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: 'Check-out date must be after check-in date' });
     }
 
-    // Only check VERIFIED bookings to avoid blocking on unconfirmed bookings
-    // Unverified bookings older than 1 hour are auto-deleted by deleteExpiredBookings()
-    const verifiedBookings = await Booking.find({ 
-      roomId, 
-      verified: true,
+    // Check ALL non-cancelled bookings (both verified and unverified) to prevent double-booking.
+    // Unverified bookings older than 1 hour are cleaned up by deleteExpiredBookings() above,
+    // so stale unconfirmed bookings won't permanently block a room.
+    const existingBookings = await Booking.find({
+      roomId,
       status: { $ne: 'Cancelled' }
-    }).select('checkIn checkOut _id').lean();
-    
-    console.log(`[BOOKING-CHECK] Checking ${verifiedBookings.length} verified booking(s) for room ${roomTitle}`);
-    
-    const overlappingBooking = verifiedBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
+    }).select('checkIn checkOut _id verified').lean();
+
+    console.log(`[BOOKING-CHECK] Checking ${existingBookings.length} booking(s) for room ${roomTitle}`);
+
+    const overlappingBooking = existingBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
 
     if (overlappingBooking) {
       console.log(`[BOOKING-CHECK] Found overlap with booking: ${overlappingBooking._id}`);
       return res.status(409).json({
-        error: 'This room is already booked for the selected time',
+        error: 'This room is already booked for the selected dates. Please choose different dates.',
         booking: serializeBooking(overlappingBooking),
       });
     }
@@ -209,6 +209,7 @@ exports.createBooking = async (req, res) => {
       bookedByName: bookedByName || 'Guest',
       bookedByEmail: bookedByEmail || '',
       phone: phone || '',
+      address: address || '',
     });
 
     console.log(`[BOOKING-CREATED] New booking: ${booking._id} for ${roomTitle}`);
@@ -229,6 +230,7 @@ exports.createBooking = async (req, res) => {
           'Guest Name': booking.bookedByName,
           'Email': booking.bookedByEmail,
           'Phone': booking.phone,
+          'Address': booking.address,
           'Room Type': booking.roomTitle,
           'Number of Guests': booking.members,
           'Check-in Date': booking.checkIn,
