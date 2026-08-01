@@ -32,14 +32,20 @@ exports.getBlogBySlug = asyncHandler(async (req, res, next) => {
 // @route   POST /api/blogs
 // @access  Private/Admin
 exports.createBlog = asyncHandler(async (req, res, next) => {
-  if (req.body.slug) {
-    const existing = await Blog.findOne({ slug: req.body.slug });
+  const payload = { ...req.body };
+  const normalizedStatus = String(payload.status || 'Published').trim();
+  payload.status = ['Published', 'Draft'].includes(normalizedStatus)
+    ? normalizedStatus
+    : 'Published';
+
+  if (payload.slug) {
+    const existing = await Blog.findOne({ slug: payload.slug });
     if (existing) {
       return next(new ErrorResponse(`Slug already exists`, 400));
     }
   }
 
-  const blog = await Blog.create(req.body);
+  const blog = await Blog.create(payload);
   res.status(201).json({
     success: true,
     data: blog
@@ -62,7 +68,15 @@ exports.updateBlog = asyncHandler(async (req, res, next) => {
     }
   }
 
-  blog = await Blog.findByIdAndUpdate(req.params.id, req.body, {
+  const payload = { ...req.body };
+  if (payload.status) {
+    const normalizedStatus = String(payload.status).trim();
+    payload.status = ['Published', 'Draft'].includes(normalizedStatus)
+      ? normalizedStatus
+      : blog.status;
+  }
+
+  blog = await Blog.findByIdAndUpdate(req.params.id, payload, {
     new: true,
     runValidators: true
   });

@@ -32,24 +32,30 @@ exports.getAttractionBySlug = asyncHandler(async (req, res, next) => {
 // @route   POST /api/attractions
 // @access  Private/Admin
 exports.createAttraction = asyncHandler(async (req, res, next) => {
+  const payload = { ...req.body };
+  const normalizedStatus = String(payload.status || 'Published').trim();
+  payload.status = ['Published', 'Draft'].includes(normalizedStatus)
+    ? normalizedStatus
+    : 'Published';
+
   // Simple check for duplicate slug
-  if (req.body.slug) {
-    const existing = await Attraction.findOne({ slug: req.body.slug });
+  if (payload.slug) {
+    const existing = await Attraction.findOne({ slug: payload.slug });
     if (existing) {
       return next(new ErrorResponse(`Slug already exists`, 400));
     }
   }
 
   // Ensure title is present
-  if (!req.body.title && req.body.title !== undefined) {
-      req.body.title = req.body.title || 'Untitled';
+  if (!payload.title && payload.title !== undefined) {
+      payload.title = payload.title || 'Untitled';
   }
 
   // Ensure old required fields are populated if they are empty
-  if (!req.body.description) req.body.description = req.body.shortDescription || 'No description';
-  if (!req.body.imageUrl) req.body.imageUrl = req.body.featuredImage || 'No image';
+  if (!payload.description) payload.description = payload.shortDescription || 'No description';
+  if (!payload.imageUrl) payload.imageUrl = payload.featuredImage || 'No image';
 
-  const attraction = await Attraction.create(req.body);
+  const attraction = await Attraction.create(payload);
   res.status(201).json({
     success: true,
     data: attraction
@@ -74,10 +80,17 @@ exports.updateAttraction = asyncHandler(async (req, res, next) => {
   }
 
   // Keep old fields synced
-  if (req.body.shortDescription) req.body.description = req.body.shortDescription;
-  if (req.body.featuredImage) req.body.imageUrl = req.body.featuredImage;
+  const payload = { ...req.body };
+  if (payload.shortDescription) payload.description = payload.shortDescription;
+  if (payload.featuredImage) payload.imageUrl = payload.featuredImage;
+  if (payload.status) {
+    const normalizedStatus = String(payload.status).trim();
+    payload.status = ['Published', 'Draft'].includes(normalizedStatus)
+      ? normalizedStatus
+      : attraction.status;
+  }
 
-  attraction = await Attraction.findByIdAndUpdate(req.params.id, req.body, {
+  attraction = await Attraction.findByIdAndUpdate(req.params.id, payload, {
     new: true,
     runValidators: true
   });
