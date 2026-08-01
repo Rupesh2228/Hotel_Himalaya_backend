@@ -111,9 +111,13 @@ exports.getBookings = async (req, res) => {
     const skip = (page - 1) * limit;
     
     const { bookedBy, bookedByEmail } = req.query;
-    const filter = bookedByEmail
-      ? { bookedByEmail }
-      : (bookedBy ? { bookedBy } : {});
+    let filter = {};
+    const filters = [];
+    if (bookedByEmail) filters.push({ bookedByEmail });
+    if (bookedBy) filters.push({ bookedBy });
+    if (filters.length > 0) {
+      filter = { $or: filters };
+    }
 
     const [bookings, total] = await Promise.all([
       Booking.find(filter).skip(skip).limit(limit).lean().sort({ createdAt: -1 }),
