@@ -1,6 +1,7 @@
 const Tour = require('../models/Tour');
 const TourBooking = require('../models/TourBooking');
 const { createAdminNotification } = require('../services/notificationService');
+const mongoose = require('mongoose');
 
 const normalizeTourPayload = (payload = {}) => ({
   title: payload.title?.trim() || '',
@@ -264,6 +265,10 @@ const updateTourBookingStatus = async (req, res) => {
 const deleteTourBooking = async (req, res) => {
   try {
     const bookingId = req.params.id;
+    // Validate ObjectId to avoid Mongoose CastError causing 500s
+    if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+      return res.status(400).json({ error: 'Invalid booking id' });
+    }
     const booking = await TourBooking.findByIdAndDelete(bookingId);
     if (!booking) return res.status(404).json({ error: 'Booking not found' });
     res.json({ success: true, message: 'Booking deleted' });
