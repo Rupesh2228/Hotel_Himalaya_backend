@@ -12,9 +12,9 @@ const attractionSchema = new mongoose.Schema({
   // New Fields
   slug: { type: String, unique: true, sparse: true, trim: true, lowercase: true },
   featuredImage: { type: String },
-  gallery: [{ type: String }],
-  shortDescription: { type: String },
-  fullDescription: { type: String },
+  gallery: { type: [String], default: [] },
+  shortDescription: { type: String, default: '' },
+  fullDescription: { type: String, default: '' },
   status: { type: String, enum: ['Draft', 'Published'], default: 'Draft' },
   
   // SEO fields
@@ -22,7 +22,7 @@ const attractionSchema = new mongoose.Schema({
   metaDescription: { type: String },
   keywords: { type: String },
   canonical: { type: String },
-  schema: { type: String } // JSON-LD
+  seoSchema: { type: String } // JSON-LD
 }, { timestamps: true });
 
 module.exports = mongoose.model('Attraction', attractionSchema);

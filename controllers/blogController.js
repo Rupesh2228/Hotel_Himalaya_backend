@@ -33,6 +33,8 @@ exports.getBlogBySlug = asyncHandler(async (req, res, next) => {
 // @access  Private/Admin
 exports.createBlog = asyncHandler(async (req, res, next) => {
   const payload = { ...req.body };
+  payload.seoSchema = payload.seoSchema || payload.schema;
+  delete payload.schema;
   const normalizedStatus = String(payload.status || 'Published').trim();
   payload.status = ['Published', 'Draft'].includes(normalizedStatus)
     ? normalizedStatus
@@ -69,6 +71,8 @@ exports.updateBlog = asyncHandler(async (req, res, next) => {
   }
 
   const payload = { ...req.body };
+  payload.seoSchema = payload.seoSchema || payload.schema;
+  delete payload.schema;
   if (payload.status) {
     const normalizedStatus = String(payload.status).trim();
     payload.status = ['Published', 'Draft'].includes(normalizedStatus)

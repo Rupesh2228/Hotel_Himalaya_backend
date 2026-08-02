@@ -37,7 +37,7 @@ const blogSchema = new mongoose.Schema({
   metaDescription: String,
   keywords: String,
   canonical: String,
-  schema: String // JSON-LD
+  seoSchema: String // JSON-LD
 }, { timestamps: true });
 
 module.exports = mongoose.model('Blog', blogSchema);

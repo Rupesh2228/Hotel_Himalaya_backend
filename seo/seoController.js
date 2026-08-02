@@ -26,12 +26,16 @@ exports.getSEOByPage = asyncHandler(async (req, res, next) => {
 exports.updateSEOByPage = asyncHandler(async (req, res, next) => {
   let seo = await SEO.findOne({ page: req.params.page });
 
+  const payload = { ...req.body };
+  payload.seoSchema = payload.seoSchema || payload.schema;
+  delete payload.schema;
+
   if (!seo) {
     // Create new
-    seo = await SEO.create({ ...req.body, page: req.params.page });
+    seo = await SEO.create({ ...payload, page: req.params.page });
   } else {
     // Update existing
-    seo = await SEO.findOneAndUpdate({ page: req.params.page }, req.body, {
+    seo = await SEO.findOneAndUpdate({ page: req.params.page }, payload, {
       new: true,
       runValidators: true
     });

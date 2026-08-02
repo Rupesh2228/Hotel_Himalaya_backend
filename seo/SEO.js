@@ -30,7 +30,7 @@ const seoSchema = new mongoose.Schema({
   canonical: {
     type: String
   },
-  schema: {
+  seoSchema: {
     type: String // JSON-LD
   }
 }, { timestamps: true });

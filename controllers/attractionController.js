@@ -33,6 +33,8 @@ exports.getAttractionBySlug = asyncHandler(async (req, res, next) => {
 // @access  Private/Admin
 exports.createAttraction = asyncHandler(async (req, res, next) => {
   const payload = { ...req.body };
+  payload.seoSchema = payload.seoSchema || payload.schema;
+  delete payload.schema;
   const normalizedStatus = String(payload.status || 'Published').trim();
   payload.status = ['Published', 'Draft'].includes(normalizedStatus)
     ? normalizedStatus
@@ -81,6 +83,8 @@ exports.updateAttraction = asyncHandler(async (req, res, next) => {
 
   // Keep old fields synced
   const payload = { ...req.body };
+  payload.seoSchema = payload.seoSchema || payload.schema;
+  delete payload.schema;
   if (payload.shortDescription) payload.description = payload.shortDescription;
   if (payload.featuredImage) payload.imageUrl = payload.featuredImage;
   if (payload.status) {
