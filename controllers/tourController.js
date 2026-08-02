@@ -278,4 +278,14 @@ const deleteTourBooking = async (req, res) => {
   }
 };
 
-module.exports = { createTour, getTours, updateTour, deleteTour, bookTour, getUserBookings, getUserBookingsGuest, updateTourBookingStatus, deleteTourBooking };
+const getAllTourBookings = async (req, res) => {
+  try {
+    const bookings = await TourBooking.find().populate('tourId').sort({ createdAt: -1 });
+    res.json({ success: true, data: bookings });
+  } catch (err) {
+    console.error('getAllTourBookings error:', err);
+    res.status(500).json({ error: 'Failed to fetch tour bookings' });
+  }
+};
+
+module.exports = { createTour, getTours, updateTour, deleteTour, bookTour, getUserBookings, getUserBookingsGuest, updateTourBookingStatus, deleteTourBooking, getAllTourBookings };
