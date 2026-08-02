@@ -49,16 +49,29 @@ app.use(
 
 app.set("trust proxy", 1);
 
-// General rate limiter (per IP, 100 req/15 min)
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: { status: "fail", error: "Too many requests. Please slow down." },
-  })
-);
+// General rate limiter (per IP, 100 req/15 min) — apply to all API routes except uploads
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { status: "fail", error: "Too many requests. Please slow down." },
+});
+
+// For upload endpoint we want a more permissive limiter to avoid blocking legitimate image uploads
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000, // higher limit for uploads
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { status: "fail", error: "Too many upload requests. Please slow down." },
+});
+
+// Use conditional middleware to skip general limiter for upload path so the route-specific limiter can run
+app.use((req, res, next) => {
+  if (req.path && req.path.startsWith('/api/upload')) return next();
+  return generalLimiter(req, res, next);
+});
 
 app.use(
   cors({
@@ -169,7 +182,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/gallery", galleryRoutes);
 app.use("/api/rooms", roomRoutes);
-app.use("/api/upload", uploadRoutes);
+app.use("/api/upload", uploadLimiter, uploadRoutes);
 app.use("/api/attractions", attractionRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/bookings", bookingRoutes);
