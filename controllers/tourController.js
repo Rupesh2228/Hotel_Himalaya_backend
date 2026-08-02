@@ -242,4 +242,35 @@ const getUserBookingsGuest = async (req, res) => {
   }
 };
 
-module.exports = { createTour, getTours, updateTour, deleteTour, bookTour, getUserBookings, getUserBookingsGuest };
+const updateTourBookingStatus = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const { status } = req.body;
+    if (!status) return res.status(400).json({ error: 'Status is required' });
+
+    const booking = await TourBooking.findById(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+
+    booking.status = String(status).trim();
+    await booking.save();
+
+    res.json({ success: true, data: booking });
+  } catch (error) {
+    console.error('updateTourBookingStatus error:', error);
+    res.status(500).json({ error: 'Failed to update booking status' });
+  }
+};
+
+const deleteTourBooking = async (req, res) => {
+  try {
+    const bookingId = req.params.id;
+    const booking = await TourBooking.findByIdAndDelete(bookingId);
+    if (!booking) return res.status(404).json({ error: 'Booking not found' });
+    res.json({ success: true, message: 'Booking deleted' });
+  } catch (error) {
+    console.error('deleteTourBooking error:', error);
+    res.status(500).json({ error: 'Failed to delete booking' });
+  }
+};
+
+module.exports = { createTour, getTours, updateTour, deleteTour, bookTour, getUserBookings, getUserBookingsGuest, updateTourBookingStatus, deleteTourBooking };
