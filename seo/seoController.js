@@ -2,6 +2,12 @@ const SEO = require('./SEO');
 const asyncHandler = require('../utils/asyncHandler');
 const ErrorResponse = require('../utils/errorHandler');
 
+const slugify = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
 // @desc    Get SEO by page
 // @route   GET /api/seo/:page
 // @access  Public
@@ -29,6 +35,7 @@ exports.updateSEOByPage = asyncHandler(async (req, res, next) => {
   const payload = { ...req.body };
   payload.seoSchema = payload.seoSchema || payload.schema;
   delete payload.schema;
+  payload.slug = payload.slug ? payload.slug.trim() : slugify(payload.title || req.params.page || '');
 
   if (!seo) {
     // Create new

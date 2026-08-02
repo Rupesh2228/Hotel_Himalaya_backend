@@ -30,6 +30,9 @@ const seoSchema = new mongoose.Schema({
   canonical: {
     type: String
   },
+  slug: {
+    type: String
+  },
   seoSchema: {
     type: String // JSON-LD
   }
