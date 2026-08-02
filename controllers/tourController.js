@@ -59,6 +59,14 @@ const createTour = async (req, res) => {
     const payload = normalizeTourPayload(req.body);
     if (!payload.title) return res.status(400).json({ error: 'Tour title is required' });
 
+    // Basic numeric validation
+    if (isNaN(Number(payload.price)) || Number(payload.price) < 0) return res.status(400).json({ error: 'Price must be a non-negative number' });
+    if (isNaN(Number(payload.durationDays)) || Number(payload.durationDays) < 0) return res.status(400).json({ error: 'durationDays must be a non-negative number' });
+    if (isNaN(Number(payload.durationNights)) || Number(payload.durationNights) < 0) return res.status(400).json({ error: 'durationNights must be a non-negative number' });
+    if (isNaN(Number(payload.maxTravelers)) || Number(payload.maxTravelers) < 0) return res.status(400).json({ error: 'maxTravelers must be a non-negative number' });
+    if (isNaN(Number(payload.remainingSeats)) || Number(payload.remainingSeats) < 0) return res.status(400).json({ error: 'remainingSeats must be a non-negative number' });
+    if (Number(payload.remainingSeats) > Number(payload.maxTravelers) && Number(payload.maxTravelers) > 0) return res.status(400).json({ error: 'remainingSeats cannot exceed maxTravelers' });
+
     const tour = await Tour.create(payload);
     res.status(201).json(tour);
   } catch (error) {
@@ -80,6 +88,14 @@ const getTours = async (req, res) => {
 const updateTour = async (req, res) => {
   try {
     const payload = normalizeTourPayload(req.body);
+    // Basic numeric validation on update as well
+    if (isNaN(Number(payload.price)) || Number(payload.price) < 0) return res.status(400).json({ error: 'Price must be a non-negative number' });
+    if (isNaN(Number(payload.durationDays)) || Number(payload.durationDays) < 0) return res.status(400).json({ error: 'durationDays must be a non-negative number' });
+    if (isNaN(Number(payload.durationNights)) || Number(payload.durationNights) < 0) return res.status(400).json({ error: 'durationNights must be a non-negative number' });
+    if (isNaN(Number(payload.maxTravelers)) || Number(payload.maxTravelers) < 0) return res.status(400).json({ error: 'maxTravelers must be a non-negative number' });
+    if (isNaN(Number(payload.remainingSeats)) || Number(payload.remainingSeats) < 0) return res.status(400).json({ error: 'remainingSeats must be a non-negative number' });
+    if (Number(payload.remainingSeats) > Number(payload.maxTravelers) && Number(payload.maxTravelers) > 0) return res.status(400).json({ error: 'remainingSeats cannot exceed maxTravelers' });
+
     const tour = await Tour.findByIdAndUpdate(req.params.id, payload, { new: true });
     if (!tour) return res.status(404).json({ error: 'Tour not found' });
     res.json(tour);
@@ -124,7 +140,19 @@ const bookTour = async (req, res) => {
       await tour.save();
     }
 
-    const computedPrice = (tour.price - tour.discount) * numGuests;
+    // Compute price per person applying discount as percentage when discount appears to be a percentage
+    const rawPrice = Number(tour.price || 0);
+    const rawDiscount = Number(tour.discount || 0);
+    let perPersonPrice = rawPrice;
+    if (rawDiscount && rawDiscount > 0) {
+      // Treat discount as percentage if it looks like a small number (<= 100), otherwise treat as absolute
+      if (rawDiscount <= 100) {
+        perPersonPrice = rawPrice * (1 - rawDiscount / 100);
+      } else {
+        perPersonPrice = Math.max(0, rawPrice - rawDiscount);
+      }
+    }
+    const computedPrice = Math.round(perPersonPrice * numGuests);
     const durationStr = `${tour.durationDays} Days / ${tour.durationNights} Nights`;
 
     const booking = await TourBooking.create({
