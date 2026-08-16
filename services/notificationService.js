@@ -1,55 +1,91 @@
 const Notification = require('../models/Notification');
 const PushSubscription = require('../models/PushSubscription');
 const webpush = require('web-push');
+const { emitToAdmins } = require('../config/socket');
 
-const sendPushNotifications = async ({ title, message, link }) => {
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
-  webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT || 'mailto:admin@hotelhimalaya.com',
-    process.env.VAPID_PUBLIC_KEY,
-    process.env.VAPID_PRIVATE_KEY
-  );
-  const subscriptions = await PushSubscription.find();
-  const payload = JSON.stringify({ title, body: message, link: link || '/hh-cp-9f3m2q' });
-  await Promise.allSettled(subscriptions.map(async (subscription) => {
-    try {
-      await webpush.sendNotification({
-        endpoint: subscription.endpoint,
-        keys: subscription.keys,
-      }, payload);
-    } catch (error) {
-      if (error.statusCode === 404 || error.statusCode === 410) {
-        await PushSubscription.deleteOne({ _id: subscription._id });
+const sendPushNotifications = async ({ title, message, link, bookingId }) => {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+    console.log('[PUSH-MOCK] VAPID keys not configured - skipping web push');
+    return;
+  }
+  try {
+    webpush.setVapidDetails(
+      process.env.VAPID_SUBJECT || 'mailto:admin@hotelhimalaya.com',
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY
+    );
+    const subscriptions = await PushSubscription.find();
+    const payload = JSON.stringify({
+      title,
+      body: message,
+      link: link || '/hh-cp-9f3m2q',
+      bookingId
+    });
+    
+    await Promise.allSettled(subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification({
+          endpoint: subscription.endpoint,
+          keys: subscription.keys,
+        }, payload);
+      } catch (error) {
+        // Cleanup invalid subscriptions
+        if (error.statusCode === 404 || error.statusCode === 410) {
+          await PushSubscription.deleteOne({ _id: subscription._id });
+          console.log('[PUSH-CLEANUP] Removed invalid/expired push subscription:', subscription.endpoint);
+        } else {
+          console.error('[PUSH-NOTIFICATION] Error sending to endpoint:', subscription.endpoint, error.message);
+        }
       }
-      throw error;
-    }
-  }));
+    }));
+  } catch (err) {
+    console.error('[PUSH-NOTIFICATION-ERROR] Failed to process web push:', err.message);
+  }
 };
 
 /**
- * Create a notification in database only. Email alerts are disabled.
- * Push notifications are still sent if configured.
+ * Create a notification in database, emit Socket.IO, and send Web Push notifications.
  */
-const createAdminNotification = async ({ type, title, message, link, details = {} }) => {
+const createAdminNotification = async ({ type, title, message, link, bookingId, recipientAdminId }) => {
+  let created = null;
   try {
-    await Notification.create({ type, title, message, link });
+    created = await Notification.create({
+      type,
+      title,
+      message,
+      link,
+      read: false,
+      isRead: false,
+      bookingId,
+      recipientAdminId
+    });
     console.log('[NOTIFICATION] Created notification in database:', type);
   } catch (err) {
     console.error('[NOTIFICATION] Failed to create notification:', err && err.message ? err.message : err);
   }
 
+  // Socket.IO Emission
   try {
-    await sendPushNotifications({ title, message, link });
-  } catch (error) {
-    console.error('[PUSH-NOTIFICATION] Failed to send device notifications:', error.message);
+    emitToAdmins('new_notification', created || { type, title, message, link, bookingId, isRead: false, read: false, createdAt: new Date() });
+  } catch (socketErr) {
+    console.error('[SOCKET-EMIT-ERROR] Failed to emit Socket.IO event:', socketErr.message);
   }
+
+  // Web Push Notification
+  try {
+    await sendPushNotifications({ title, message, link, bookingId });
+  } catch (pushErr) {
+    console.error('[PUSH-NOTIFICATION-ERROR] Failed to send push:', pushErr.message);
+  }
+
+  return created;
 };
 
 /**
- * Admin login notification disabled - no email alerts.
+ * Admin login notification
  */
 const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
   console.log(`[ADMIN-LOGIN] Admin logged in: ${adminName} (${adminEmail})`);
 };
 
-module.exports = { createAdminNotification, notifyAdminLogin };
+module.exports = { createAdminNotification, notifyAdminLogin, sendPushNotifications };

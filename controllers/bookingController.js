@@ -2,6 +2,9 @@ const crypto = require('crypto');
 const Booking = require('../models/Booking');
 const Room = require('../models/Room');
 const { createAdminNotification } = require('../services/notificationService');
+const { sendEmail, sendAdminEmail } = require('../services/email.service');
+const bookingTemplate = require('../templates/booking.template');
+const adminNotificationTemplate = require('../templates/adminNotification.template');
 
 const parseDate = (value) => {
   if (!value) return null;
@@ -38,85 +41,43 @@ const hasOverlap = (existingBooking, checkIn, checkOut) => {
   return existingCheckIn < nextCheckOut && nextCheckIn < existingCheckOut;
 };
 
-const getComputedStatus = (booking) => {
-  const now = new Date();
-  const checkIn = parseDate(booking.checkIn);
-  const checkOut = parseDate(booking.checkOut);
-
-  if (!checkIn || !checkOut) return 'Pending';
-  if (booking.verified) return 'Verified';
-  if (now > checkOut) return 'Completed';
-  return 'Booked';
-};
-
-const generateVerificationCode = async () => {
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const code = Array.from({ length: 6 }, () => letters[crypto.randomInt(0, letters.length)]).join('');
-    const existing = await Booking.findOne({ verificationCode: code });
+const generateBookingId = async () => {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const num = Math.floor(10000 + Math.random() * 90000);
+    const code = `BK-${num}`;
+    const existing = await Booking.findOne({ bookingId: code });
     if (!existing) return code;
   }
-
-  throw new Error('Failed to generate a unique verification code');
+  throw new Error('Failed to generate a unique booking ID');
 };
 
 const serializeBooking = (booking) => {
-  const data = typeof booking.toObject === 'function' ? booking.toObject() : booking;
-  return {
-    ...data,
-    status: getComputedStatus(booking),
-  };
-};
-
-const findBookingByIdentifier = async (identifier) => {
-  if (!identifier) return null;
-
-  return Booking.findOne({
-    $or: [{ _id: identifier }, { verificationCode: identifier }],
-  });
-};
-
-const deleteExpiredBookings = async () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  // Use date query instead of loading all bookings into memory
-  const expiredResult = await Booking.deleteMany({
-    checkOut: { $lt: today.toISOString().split('T')[0] }
-  });
-
-  if (expiredResult.deletedCount > 0) {
-    console.log(`[CLEANUP] Deleted ${expiredResult.deletedCount} expired booking(s)`);
-  }
-
-  // Also delete unverified bookings older than 1 hour (prevent stale unverified bookings)
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const oldUnverifiedResult = await Booking.deleteMany({
-    verified: false,
-    createdAt: { $lt: oneHourAgo }
-  });
-
-  if (oldUnverifiedResult.deletedCount > 0) {
-    console.log(`[CLEANUP] Deleted ${oldUnverifiedResult.deletedCount} old unverified booking(s)`);
-  }
+  return typeof booking.toObject === 'function' ? booking.toObject() : booking;
 };
 
 exports.getBookings = async (req, res) => {
   try {
-    await deleteExpiredBookings();
-
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const skip = (page - 1) * limit;
     
-    const { bookedBy, bookedByEmail } = req.query;
-    let filter = {};
-    const filters = [];
-    if (bookedByEmail) filters.push({ bookedByEmail });
-    if (bookedBy) filters.push({ bookedBy });
-    if (filters.length > 0) {
-      filter = { $or: filters };
+    const { status, date, search } = req.query;
+    const filter = {};
+
+    if (status) {
+      filter.status = status;
+    }
+
+    if (date) {
+      filter.checkIn = date;
+    }
+
+    if (search) {
+      filter.$or = [
+        { guestName: { $regex: search, $options: 'i' } },
+        { guestEmail: { $regex: search, $options: 'i' } },
+        { bookingId: { $regex: search, $options: 'i' } }
+      ];
     }
 
     const [bookings, total] = await Promise.all([
@@ -125,7 +86,7 @@ exports.getBookings = async (req, res) => {
     ]);
 
     res.json({
-      data: bookings.map(serializeBooking),
+      data: bookings,
       pagination: { page, limit, total, pages: Math.ceil(total / limit) }
     });
   } catch (error) {
@@ -134,28 +95,43 @@ exports.getBookings = async (req, res) => {
   }
 };
 
-const { validationResult } = require('express-validator');
+exports.getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const booking = await Booking.findOne({ $or: [{ _id: id }, { bookingId: id }] });
+    if (!booking) {
+      return res.status(404).json({ error: 'Booking not found' });
+    }
+    // Simple privacy check for guests: if not logged in, anyone with ID can view,
+    // but we omit critical user information if we need to. For guests, showing checkIn/checkOut is fine.
+    res.json(serializeBooking(booking));
+  } catch (error) {
+    console.error('getBookingById error:', error);
+    res.status(500).json({ error: 'Failed to retrieve booking' });
+  }
+};
 
 exports.createBooking = async (req, res) => {
   try {
-    // Validate request from bookingValidator middleware
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ error: errors.array()[0].msg });
+    // Support both new field names and legacy field names
+    const roomId = req.body.roomId;
+    const guestName = req.body.guestName || req.body.bookedByName;
+    const guestEmail = req.body.guestEmail || req.body.bookedByEmail;
+    const phone = req.body.phone;
+    const checkIn = req.body.checkIn;
+    const checkOut = req.body.checkOut;
+    const guests = req.body.guests || req.body.members;
+    const specialRequest = req.body.specialRequest || '';
+    const address = req.body.address || 'Guest Stay';
+
+    if (!roomId || !guestName || !guestEmail || !phone || !checkIn || !checkOut || !guests) {
+      return res.status(400).json({ error: 'Required fields: roomId, guestName, guestEmail, phone, checkIn, checkOut, guests' });
     }
 
-    // Clean up expired/old unverified bookings first
-    await deleteExpiredBookings();
-
-    const { roomId, roomTitle, roomPrice, totalMembers, members, checkIn, checkOut, bookedBy, bookedByName, bookedByEmail, phone, address } = req.body;
-
-    if (!roomId || !roomTitle || !checkIn || !checkOut || !members) {
-      return res.status(400).json({ error: 'Room, members, check-in, and check-out are required' });
-    }
-
+    // Date validations
     const checkInDate = parseDate(checkIn);
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    today.setHours(0,0,0,0);
     if (!checkInDate || checkInDate < today) {
       return res.status(400).json({ error: 'Check-in date cannot be in the past' });
     }
@@ -165,88 +141,120 @@ exports.createBooking = async (req, res) => {
       return res.status(400).json({ error: 'Check-out date must be after check-in date' });
     }
 
-    // Check ALL non-cancelled bookings (both verified and unverified) to prevent double-booking.
-    // Unverified bookings older than 1 hour are cleaned up by deleteExpiredBookings() above,
-    // so stale unconfirmed bookings won't permanently block a room.
-    const existingBookings = await Booking.find({
-      roomId,
-      status: { $ne: 'Cancelled' }
-    }).select('checkIn checkOut _id verified').lean();
-
-    console.log(`[BOOKING-CHECK] Checking ${existingBookings.length} booking(s) for room ${roomTitle}`);
-
-    const overlappingBooking = existingBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
-
-    if (overlappingBooking) {
-      console.log(`[BOOKING-CHECK] Found overlap with booking: ${overlappingBooking._id}`);
-      return res.status(409).json({
-        error: 'This room is already booked for the selected dates. Please choose different dates.',
-        booking: serializeBooking(overlappingBooking),
-      });
-    }
-
-    console.log(`[BOOKING-CHECK] No conflicts found - proceeding with booking`);
-
+    // Room validation
     const room = await Room.findById(roomId);
     if (!room) {
       return res.status(404).json({ error: 'Selected room not found' });
     }
 
-    if (Number(members) > Number(room.totalMembers || 0)) {
-      return res.status(400).json({ error: `Selected room allows only ${room.totalMembers || 1} members` });
+    if (!room.isAvailable) {
+      return res.status(400).json({ error: 'Selected room is currently marked as unavailable' });
     }
 
-    const days = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-    const computedPrice = room.price * days;
+    if (Number(guests) > Number(room.totalMembers || 2)) {
+      return res.status(400).json({ error: `Selected room allows only ${room.totalMembers || 2} guests max` });
+    }
 
-    const verificationCode = await generateVerificationCode();
+    // Prevent double booking (overlapping dates, ignoring cancelled bookings)
+    const existingBookings = await Booking.find({
+      roomId,
+      status: { $ne: 'Cancelled' }
+    }).select('checkIn checkOut _id status').lean();
+
+    const overlappingBooking = existingBookings.find((booking) => hasOverlap(booking, checkIn, checkOut));
+    if (overlappingBooking) {
+      return res.status(409).json({
+        error: 'This room is already booked for the selected dates. Please choose different dates.'
+      });
+    }
+
+    // Backend price calculation
+    const nights = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
+    const computedPrice = room.price * nights;
+
+    const bookingId = await generateBookingId();
+    const verificationCode = bookingId.split('-')[1]; // use portion as code for backward compatibility
+
     const booking = await Booking.create({
+      bookingId,
+      guestName,
+      guestEmail,
+      phone,
       roomId: room._id,
-      roomTitle: room.title,
-      roomPrice: computedPrice,
-      totalMembers: room.totalMembers || 1,
-      members: Number(members),
+      roomName: room.title,
       checkIn,
       checkOut,
+      guests: Number(guests),
+      specialRequest: specialRequest || '',
+      totalPrice: computedPrice,
+      status: 'Pending',
+
+      // Backward compatibility fields
+      roomTitle: room.title,
+      roomPrice: computedPrice,
+      totalMembers: room.totalMembers || 2,
+      members: Number(guests),
       verificationCode,
-      bookedBy: bookedBy || 'guest',
-      bookedByName: bookedByName || 'Guest',
-      bookedByEmail: bookedByEmail || '',
-      phone: phone || '',
-      address: address || '',
+      bookedBy: 'guest',
+      bookedByName: guestName,
+      bookedByEmail: guestEmail,
+      address: address || 'Guest Stay',
+      verified: false
     });
 
-    console.log(`[BOOKING-CREATED] New booking: ${booking._id} for ${roomTitle}`);
+    console.log(`[BOOKING-CREATED] Unique booking saved: ${bookingId}`);
 
-    // Send admin notification (DB + Email) - use actual booking data
+    // Create Persistent Notification + Socket.IO + Web Push
     try {
-      const numNights = Math.ceil(Math.abs(checkOutDate - checkInDate) / (1000 * 60 * 60 * 24)) || 1;
-      const pricePerNight = room.price;
-      const totalPrice = booking.roomPrice; // Use actual booking price
-      
       await createAdminNotification({
-        type: 'booking',
-        title: `New Room Booking: ${roomTitle}`,
-        message: `${booking.bookedByName} booked ${roomTitle} from ${booking.checkIn} to ${booking.checkOut}.`,
-        link: `/admin/bookings/${booking._id}`,
-        sendEmail: true,
-        details: {
-          'Guest Name': booking.bookedByName,
-          'Email': booking.bookedByEmail,
-          'Phone': booking.phone,
-          'Address': booking.address,
-          'Room Type': booking.roomTitle,
-          'Number of Guests': booking.members,
-          'Check-in Date': booking.checkIn,
-          'Check-out Date': booking.checkOut,
-          'Duration': `${numNights} Night${numNights > 1 ? 's' : ''}`,
-          'Price Per Night': `Rs. ${pricePerNight}`,
-          'Total Price': `Rs. ${totalPrice}`,
-          'Verification Code': booking.verificationCode
-        }
+        type: 'BOOKING',
+        title: 'New Room Booking',
+        message: `${guestName} booked ${room.title}.`,
+        link: `/hh-cp-9f3m2q`,
+        bookingId: booking.bookingId
       });
-    } catch (e) {
-      console.error('Failed to queue admin booking notification:', e && e.message ? e.message : e);
+    } catch (notifErr) {
+      console.error('[BOOKING-ERROR] Failed to process notifications:', notifErr.message);
+    }
+
+    // Nodemailer email alerts (Admin + Guest)
+    // Send email to Guest
+    try {
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <h2>Booking Received</h2>
+          <p>Thank you for booking with our hotel.</p>
+          <p><strong>Booking ID:</strong> ${bookingId}</p>
+          <p><strong>Room:</strong> ${room.title}</p>
+          <p><strong>Check-in:</strong> ${checkIn}</p>
+          <p><strong>Check-out:</strong> ${checkOut}</p>
+          <p><strong>Guests:</strong> ${guests}</p>
+          <p><strong>Status:</strong> Pending</p>
+        </div>
+      `;
+      await sendEmail(guestEmail, 'Booking Received', `Booking ID: ${bookingId} status is Pending`, emailHtml);
+    } catch (guestEmailErr) {
+      console.error('[EMAIL-ERROR] Guest booking email failed:', guestEmailErr.message);
+    }
+
+    // Send email to Admin
+    try {
+      const details = {
+        'Booking ID': bookingId,
+        'Guest Name': guestName,
+        'Email': guestEmail,
+        'Phone': phone,
+        'Room': room.title,
+        'Check-in': checkIn,
+        'Check-out': checkOut,
+        'Guests': guests,
+        'Total Price': `NPR ${computedPrice}`,
+        'Status': 'Pending'
+      };
+      const adminHtml = adminNotificationTemplate('booking', details);
+      await sendAdminEmail(`🔔 New Room Booking - Booking #${bookingId}`, `New room booking received for ${room.title}.`, adminHtml);
+    } catch (adminEmailErr) {
+      console.error('[EMAIL-ERROR] Admin booking email failed:', adminEmailErr.message);
     }
 
     res.status(201).json(serializeBooking(booking));
@@ -256,45 +264,108 @@ exports.createBooking = async (req, res) => {
   }
 };
 
-exports.verifyBooking = async (req, res) => {
+exports.updateBookingStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { verificationCode, verifiedBy } = req.body;
+    const { status } = req.body;
 
-    if (!verificationCode) {
-      return res.status(400).json({ error: 'Verification code is required' });
+    const validStatuses = ['Pending', 'Confirmed', 'Ongoing', 'Completed', 'Cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of ${validStatuses.join(', ')}` });
     }
 
-    const booking = await findBookingByIdentifier(id);
+    const booking = await Booking.findOne({ $or: [{ _id: id }, { bookingId: id }] });
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
 
-    if (booking.verificationCode !== verificationCode) {
-      return res.status(400).json({ error: 'Verification code does not match' });
+    // Verify transitions logic
+    const current = booking.status;
+    if (current === status) {
+      return res.json(serializeBooking(booking));
     }
 
-    booking.verified = true;
-    booking.verifiedAt = new Date();
-    booking.verifiedBy = verifiedBy || 'admin';
+    // Restrict invalid status transitions:
+    // Completed or Cancelled bookings cannot change status
+    if (['Completed', 'Cancelled'].includes(current)) {
+      return res.status(400).json({ error: `Cannot change status of a ${current} booking.` });
+    }
+
+    // Normal flow: Pending -> Confirmed -> Ongoing -> Completed.
+    if (status === 'Ongoing' && current !== 'Confirmed' && current !== 'Pending') {
+      return res.status(400).json({ error: 'Bookings must be Confirmed or Pending before starting check-in.' });
+    }
+
+    if (status === 'Completed' && current !== 'Ongoing') {
+      return res.status(400).json({ error: 'Bookings must be Ongoing before they can be marked Completed.' });
+    }
+
+    booking.status = status;
+    if (status === 'Confirmed') {
+      booking.verified = true;
+      booking.verifiedAt = new Date();
+      booking.verifiedBy = req.user?.name || 'admin';
+    }
     await booking.save();
+
+    console.log(`[BOOKING-STATUS] Booking ${booking.bookingId} updated to ${status}`);
+
+    // Send emails on material updates (Confirmed / Cancelled)
+    if (status === 'Confirmed') {
+      try {
+        const confirmHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2>Your Booking Has Been Confirmed</h2>
+            <p><strong>Booking ID:</strong> ${booking.bookingId}</p>
+            <p><strong>Room:</strong> ${booking.roomName || booking.roomTitle}</p>
+            <p><strong>Check-in:</strong> ${booking.checkIn}</p>
+            <p><strong>Check-out:</strong> ${booking.checkOut}</p>
+            <p><strong>Status:</strong> Confirmed</p>
+            <p>We look forward to hosting you!</p>
+          </div>
+        `;
+        await sendEmail(booking.guestEmail, 'Your Booking Has Been Confirmed', `Booking ${booking.bookingId} is now Confirmed`, confirmHtml);
+      } catch (e) {
+        console.error('[EMAIL-ERROR] Confirm guest email failed:', e.message);
+      }
+    } else if (status === 'Cancelled') {
+      try {
+        const cancelHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2>Your Booking Has Been Cancelled</h2>
+            <p><strong>Booking ID:</strong> ${booking.bookingId}</p>
+            <p><strong>Room:</strong> ${booking.roomName || booking.roomTitle}</p>
+            <p><strong>Check-in:</strong> ${booking.checkIn}</p>
+            <p><strong>Check-out:</strong> ${booking.checkOut}</p>
+            <p><strong>Status:</strong> Cancelled</p>
+          </div>
+        `;
+        await sendEmail(booking.guestEmail, 'Your Booking Has Been Cancelled', `Booking ${booking.bookingId} is Cancelled`, cancelHtml);
+      } catch (e) {
+        console.error('[EMAIL-ERROR] Cancel guest email failed:', e.message);
+      }
+    }
 
     res.json(serializeBooking(booking));
   } catch (error) {
-    console.error('verifyBooking error:', error);
-    res.status(500).json({ error: 'Failed to verify booking' });
+    console.error('updateBookingStatus error:', error);
+    res.status(500).json({ error: 'Failed to update booking status' });
   }
+};
+
+// Kept verifyBooking for old frontend buttons trigger
+exports.verifyBooking = async (req, res) => {
+  req.body.status = 'Confirmed';
+  return exports.updateBookingStatus(req, res);
 };
 
 exports.deleteBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const booking = await findBookingByIdentifier(id);
-
+    const booking = await Booking.findOne({ $or: [{ _id: id }, { bookingId: id }] });
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
-
     await Booking.findByIdAndDelete(booking._id);
     res.json({ message: 'Booking deleted successfully' });
   } catch (error) {

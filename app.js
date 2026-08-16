@@ -1,5 +1,6 @@
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, ".env") });
+const http = require("http");
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -11,6 +12,8 @@ const mongoose = require("mongoose");
 const fs = require("fs");
 
 const { connectDB } = require("./db");
+const { initSocket } = require("./config/socket");
+const { initCronJobs } = require("./services/cron");
 const { globalErrorHandler } = require("./utils/errorHandler");
 
 // ── Route imports ──────────────────────────────────────────────────────────────
@@ -204,17 +207,24 @@ app.use((req, res) => {
 // ── Global error handler (must be last) ───────────────────────────────────────
 app.use(globalErrorHandler);
 
-// ── Start server ──────────────────────────────────────────────────────────────
+// ── Start server with HTTP + Socket.IO ───────────────────────────────────────
 const PORT = process.env.PORT || 3000;
+const server = http.createServer(app);
 
-app.listen(PORT, () => {
+// Initialize Socket.IO on the HTTP server
+initSocket(server);
+
+server.listen(PORT, () => {
   console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🔌 Socket.IO ready for real-time notifications`);
 });
 
 // ── Connect to database ──────────────────────────────────────────────────────
 connectDB()
   .then(async () => {
     console.log("✓ Database connected successfully");
+    // Initialize cron jobs after DB is ready
+    initCronJobs();
   })
   .catch((err) => {
     console.error("Database connection error:", err.message);

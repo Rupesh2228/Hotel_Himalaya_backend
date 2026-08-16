@@ -1,27 +1,43 @@
 const mongoose = require('mongoose');
 
 const bookingSchema = new mongoose.Schema({
+  bookingId: { type: String, required: true, unique: true, index: true },
+  guestName: { type: String, required: true },
+  guestEmail: { type: String, required: true, index: true },
+  phone: { type: String, required: true },
   roomId: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true, index: true },
-  roomTitle: { type: String, required: true },
-  roomPrice: { type: Number, default: 0 },
-  totalMembers: { type: Number, default: 1 },
-  members: { type: Number, required: true },
+  roomName: { type: String, required: true },
   checkIn: { type: String, required: true },
   checkOut: { type: String, required: true },
-  verificationCode: { type: String, required: true, unique: true, index: true },
-  bookedBy: { type: String, default: 'guest' },
-  bookedByName: { type: String, default: 'Guest' },
-  bookedByEmail: { type: String, default: '', index: true },
-  phone: { type: String, default: '' },
-  address: { type: String, default: '' },
-  verified: { type: Boolean, default: false, index: true },
+  guests: { type: Number, required: true },
+  specialRequest: { type: String, default: '' },
+  totalPrice: { type: Number, required: true },
+  status: {
+    type: String,
+    enum: ['Pending', 'Confirmed', 'Ongoing', 'Completed', 'Cancelled'],
+    default: 'Pending',
+    index: true
+  },
+  // Legacy / existing compatibility fields
+  roomTitle: { type: String },
+  roomPrice: { type: Number },
+  totalMembers: { type: Number },
+  members: { type: Number },
+  verificationCode: { type: String },
+  bookedBy: { type: String },
+  bookedByName: { type: String },
+  bookedByEmail: { type: String },
+  phoneLegacy: { type: String }, // to prevent conflicts
+  address: { type: String },
+  verified: { type: Boolean, default: false },
   verifiedAt: { type: Date, default: null },
-  verifiedBy: { type: String, default: '' },
-  status: { type: String, default: 'Booked' },
-  createdAt: { type: Date, default: Date.now, index: true },
+  verifiedBy: { type: String, default: '' }
+}, {
+  timestamps: true
 });
 
 // Compound index for efficient booking lookups
-bookingSchema.index({ roomId: 1, verified: 1, createdAt: -1 });
+bookingSchema.index({ roomId: 1, status: 1, checkIn: 1, checkOut: 1 });
+bookingSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

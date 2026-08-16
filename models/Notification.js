@@ -6,6 +6,9 @@ const notificationSchema = new mongoose.Schema({
   message: { type: String, required: true },
   link: { type: String, default: '' },
   read: { type: Boolean, default: false },
+  isRead: { type: Boolean, default: false }, // required by spec
+  bookingId: { type: String },
+  recipientAdminId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   createdAt: { type: Date, default: Date.now },
 });
 
