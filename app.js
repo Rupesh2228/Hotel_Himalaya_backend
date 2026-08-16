@@ -90,7 +90,8 @@ app.use(cors(corsOptions));
 
 // Explicitly handle all OPTIONS preflight requests and return 204 immediately
 // — this ensures they NEVER reach the rate limiter below.
-app.options('*', cors(corsOptions));
+// Note: Express 5 / path-to-regexp v8 no longer accepts bare '*' — use a regex instead.
+app.options(/.*/, cors(corsOptions));
 
 // ── Rate limiters — applied AFTER CORS so preflight requests are already
 // handled and do not consume rate limit quota. ────────────────────────────────
