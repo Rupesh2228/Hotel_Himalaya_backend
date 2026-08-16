@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const User = require('../models/User');
 
 // Create Transporter dynamically to pick up any environment variable changes
 const getTransporter = () => {
@@ -52,15 +53,35 @@ const sendEmail = async (to, subject, text, html) => {
 };
 
 /**
- * Send an email to the configured administrator.
+ * Send an email to all approved administrators in the database.
  */
 const sendAdminEmail = async (subject, text, html) => {
-  const adminEmail = process.env.ADMIN_EMAIL;
-  if (!adminEmail) {
-    console.warn('[EMAIL-WARNING] ADMIN_EMAIL env variable not set. Admin email notification skipped.');
+  try {
+    // Find all approved admins (role: 'admin')
+    const approvedAdmins = await User.find({ role: 'admin' }).select('email');
+    
+    if (!approvedAdmins || approvedAdmins.length === 0) {
+      console.warn('[EMAIL-WARNING] No approved admins found in database. Admin email notification skipped.');
+      return false;
+    }
+    
+    const adminEmails = approvedAdmins.map(admin => admin.email).filter(Boolean);
+    
+    if (adminEmails.length === 0) {
+      console.warn('[EMAIL-WARNING] Approved admins have empty emails. Admin email notification skipped.');
+      return false;
+    }
+    
+    console.log(`[EMAIL] Sending admin email notifications to ${adminEmails.length} approved admin(s): ${adminEmails.join(', ')}`);
+    
+    // Send to all approved admins concurrently
+    const sendPromises = adminEmails.map(email => sendEmail(email, subject, text, html));
+    await Promise.all(sendPromises);
+    return true;
+  } catch (error) {
+    console.error('[EMAIL-ERROR] Failed to query approved admins or send admin emails:', error.message || error);
     return false;
   }
-  return sendEmail(adminEmail, subject, text, html);
 };
 
 module.exports = { sendEmail, sendAdminEmail };

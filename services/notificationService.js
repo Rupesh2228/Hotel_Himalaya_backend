@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
 const PushSubscription = require('../models/PushSubscription');
+const User = require('../models/User');
 const webpush = require('web-push');
 const { emitToAdmins } = require('../config/socket');
 
@@ -14,7 +15,19 @@ const sendPushNotifications = async ({ title, message, link, bookingId }) => {
       process.env.VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );
-    const subscriptions = await PushSubscription.find();
+
+    // Retrieve only approved admins to prevent push messages to pending/rejected/disabled users
+    const approvedAdmins = await User.find({ role: 'admin' }).select('_id');
+    const adminIds = approvedAdmins.map(admin => admin._id);
+
+    // Find subscriptions belonging to approved admins
+    const subscriptions = await PushSubscription.find({
+      $or: [
+        { userId: { $in: adminIds } },
+        { adminId: { $in: adminIds } }
+      ]
+    });
+
     const payload = JSON.stringify({
       title,
       body: message,
