@@ -52,36 +52,77 @@ app.use(
 
 app.set("trust proxy", 1);
 
-// General rate limiter (per IP, 100 req/15 min) — apply to all API routes except uploads
+// ── CORS — MUST come before rate limiters so that preflight OPTIONS requests
+// always get the correct Access-Control-* headers even when rate limits are
+// reached. Without this, a 429 response from the limiter has no CORS headers
+// and the browser treats it as a network error instead of showing the 429.
+// ─────────────────────────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  // Vercel production frontend
+  'https://hotel-himalaya-inn.vercel.app',
+  // Allow any *.vercel.app preview deployments
+  /\.vercel\.app$/,
+  // Local development
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, mobile apps, same-origin)
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.some((o) =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    // Fall through: also allow in development / any origin as a safety net
+    // Remove this line to enforce strict origin checking in production:
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 204, // Some legacy browsers choke on 200 for OPTIONS
+};
+
+// Apply CORS globally (before everything else that could reject a request)
+app.use(cors(corsOptions));
+
+// Explicitly handle all OPTIONS preflight requests and return 204 immediately
+// — this ensures they NEVER reach the rate limiter below.
+app.options('*', cors(corsOptions));
+
+// ── Rate limiters — applied AFTER CORS so preflight requests are already
+// handled and do not consume rate limit quota. ────────────────────────────────
+
+// General limiter: 200 req / 15 min per IP.
+// The admin dashboard loads ~12 API calls on mount in parallel, so keep
+// this high enough to avoid false positives on a legitimate page load.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 200,
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip the rate limiter entirely for OPTIONS preflight requests
+  skip: (req) => req.method === 'OPTIONS',
   message: { status: "fail", error: "Too many requests. Please slow down." },
 });
 
 // For upload endpoint we want a more permissive limiter to avoid blocking legitimate image uploads
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000, // higher limit for uploads
+  max: 1000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.method === 'OPTIONS',
   message: { status: "fail", error: "Too many upload requests. Please slow down." },
 });
 
-// Use conditional middleware to skip general limiter for upload path so the route-specific limiter can run
+// Apply general limiter to all routes except uploads (which have their own limiter)
 app.use((req, res, next) => {
   if (req.path && req.path.startsWith('/api/upload')) return next();
   return generalLimiter(req, res, next);
 });
-
-app.use(
-  cors({
-    origin: true,
-    credentials: true, // needed for HTTP-only cookie auth
-  })
-);
 
 // ── Body parsing ───────────────────────────────────────────────────────────────
 app.use(express.json({ limit: "10kb" }));           // limit payload size
