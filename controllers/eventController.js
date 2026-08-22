@@ -266,12 +266,15 @@ const bookEvent = async (req, res) => {
 // Get User Bookings (by user ID or email)
 const getUserBookings = async (req, res) => {
   try {
-    const bookings = await EventBooking.find({
-      $or: [
-        { bookedBy: req.user._id },
-        { bookedByEmail: req.user.email }
-      ]
-    }).populate('eventId').sort({ createdAt: -1 });
+    const userEmail = req.user?.email || '';
+    const userId = req.user?._id;
+    const query = { $or: [] };
+    if (userId) query.$or.push({ bookedBy: userId }, { bookedBy: String(userId) });
+    if (userEmail) {
+      query.$or.push({ bookedByEmail: { $regex: new RegExp(`^${userEmail}$`, 'i') } });
+      query.$or.push({ bookedBy: userEmail });
+    }
+    const bookings = await EventBooking.find(query.$or.length > 0 ? query : {}).populate('eventId').sort({ createdAt: -1 });
     res.json(bookings.map(serializeEventBooking));
   } catch (err) {
     console.error('getUserBookings error:', err);
@@ -282,12 +285,19 @@ const getUserBookings = async (req, res) => {
 // Get User Bookings by email or deviceId (public fallback)
 const getUserBookingsByEmail = async (req, res) => {
   try {
-    const { email, deviceId } = req.query;
+    const email = req.query.email || req.query.bookedByEmail || req.query.guestEmail;
+    const deviceId = req.query.deviceId || req.query.bookedBy;
     if (!email && !deviceId) return res.status(400).json({ error: 'Email or deviceId is required' });
     
     const query = { $or: [] };
-    if (email) query.$or.push({ bookedByEmail: email });
-    if (deviceId) query.$or.push({ deviceId: deviceId });
+    if (email) {
+      query.$or.push({ bookedByEmail: { $regex: new RegExp(`^${email.trim()}$`, 'i') } });
+      query.$or.push({ bookedBy: email.trim() });
+    }
+    if (deviceId) {
+      query.$or.push({ deviceId: deviceId });
+      query.$or.push({ bookedBy: deviceId });
+    }
     
     const bookings = await EventBooking.find(query).populate('eventId').sort({ createdAt: -1 });
     res.json(bookings.map(serializeEventBooking));

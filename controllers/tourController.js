@@ -89,7 +89,6 @@ const getTours = async (req, res) => {
 const updateTour = async (req, res) => {
   try {
     const payload = normalizeTourPayload(req.body);
-    // Basic numeric validation on update as well
     if (isNaN(Number(payload.price)) || Number(payload.price) < 0) return res.status(400).json({ error: 'Price must be a non-negative number' });
     if (isNaN(Number(payload.durationDays)) || Number(payload.durationDays) < 0) return res.status(400).json({ error: 'durationDays must be a non-negative number' });
     if (isNaN(Number(payload.durationNights)) || Number(payload.durationNights) < 0) return res.status(400).json({ error: 'durationNights must be a non-negative number' });
@@ -141,12 +140,11 @@ const bookTour = async (req, res) => {
       await tour.save();
     }
 
-    // Compute price per person applying discount as percentage when discount appears to be a percentage
+    // Compute price per person
     const rawPrice = Number(tour.price || 0);
     const rawDiscount = Number(tour.discount || 0);
     let perPersonPrice = rawPrice;
     if (rawDiscount && rawDiscount > 0) {
-      // Treat discount as percentage if it looks like a small number (<= 100), otherwise treat as absolute
       if (rawDiscount <= 100) {
         perPersonPrice = rawPrice * (1 - rawDiscount / 100);
       } else {
@@ -177,7 +175,6 @@ const bookTour = async (req, res) => {
       paymentMethod: req.body.paymentMethod || 'pay_at_site',
       status: 'Pending'
     });
-
 
     // Notify admin about the new tour booking
     try {
@@ -213,12 +210,16 @@ const bookTour = async (req, res) => {
 
 const getUserBookings = async (req, res) => {
   try {
-    const bookings = await TourBooking.find({
-      $or: [
-        { bookedBy: req.user._id },
-        { bookedByEmail: req.user.email }
-      ]
-    }).populate('tourId').sort({ createdAt: -1 });
+    const userEmail = req.user?.email || '';
+    const userId = req.user?._id;
+    const query = { $or: [] };
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      query.$or.push({ bookedBy: userId });
+    }
+    if (userEmail) {
+      query.$or.push({ bookedByEmail: { $regex: new RegExp(`^${userEmail}$`, 'i') } });
+    }
+    const bookings = await TourBooking.find(query.$or.length > 0 ? query : {}).populate('tourId').sort({ createdAt: -1 });
     res.json(bookings);
   } catch (err) {
     console.error('getUserBookings error:', err);
@@ -228,12 +229,17 @@ const getUserBookings = async (req, res) => {
 
 const getUserBookingsGuest = async (req, res) => {
   try {
-    const { email, deviceId } = req.query;
+    const email = req.query.email || req.query.bookedByEmail || req.query.guestEmail;
+    const deviceId = req.query.deviceId || req.query.bookedBy;
     if (!email && !deviceId) return res.status(400).json({ error: 'Email or deviceId is required' });
     
     const query = { $or: [] };
-    if (email) query.$or.push({ bookedByEmail: email });
-    if (deviceId) query.$or.push({ deviceId: deviceId });
+    if (email) {
+      query.$or.push({ bookedByEmail: { $regex: new RegExp(`^${email.trim()}$`, 'i') } });
+    }
+    if (deviceId) {
+      query.$or.push({ deviceId: deviceId });
+    }
     
     const bookings = await TourBooking.find(query).populate('tourId').sort({ createdAt: -1 });
     res.json(bookings);
@@ -265,7 +271,6 @@ const updateTourBookingStatus = async (req, res) => {
 const deleteTourBooking = async (req, res) => {
   try {
     const bookingId = req.params.id;
-    // Validate ObjectId to avoid Mongoose CastError causing 500s
     if (!mongoose.Types.ObjectId.isValid(bookingId)) {
       return res.status(400).json({ error: 'Invalid booking id' });
     }
