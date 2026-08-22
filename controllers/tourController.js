@@ -1,6 +1,8 @@
 const Tour = require('../models/Tour');
 const TourBooking = require('../models/TourBooking');
 const { createAdminNotification } = require('../services/notificationService');
+const { sendEmail, sendAdminEmail } = require('../services/email.service');
+const adminNotificationTemplate = require('../templates/adminNotification.template');
 const mongoose = require('mongoose');
 
 const normalizeTourPayload = (payload = {}) => ({
@@ -176,15 +178,60 @@ const bookTour = async (req, res) => {
       status: 'Pending'
     });
 
-    // Notify admin about the new tour booking
-    try {
-      await createAdminNotification({
-        type: 'tour_booking',
-        title: `New Tour Booking: ${tour.title}`,
-        message: `${bookedByName} booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
-        link: `/admin/tours/bookings/${booking._id}`,
-        sendEmail: true,
-        details: {
+    // Respond immediately to client
+    res.status(201).json(booking);
+
+    // Run notifications and emails in background
+    (async () => {
+      // 1. Admin push/socket notification
+      try {
+        await createAdminNotification({
+          type: 'tour_booking',
+          title: `New Tour Booking: ${tour.title}`,
+          message: `${bookedByName} booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
+          link: `/admin/tours/bookings/${booking._id}`,
+          bookingId: String(booking._id)
+        });
+      } catch (e) {
+        console.error('Failed to create admin tour notification:', e && e.message ? e.message : e);
+      }
+
+      // 2. Guest confirmation email
+      if (bookedByEmail) {
+        try {
+          const guestHtml = `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
+              <h2 style="color: #b56b2f;">Tour Booking Confirmed!</h2>
+              <p>Thank you for booking with Hotel Himalaya INN. Here are your tour details:</p>
+              <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Tour</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${tour.title}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Destination</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${tour.destination}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Duration</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${tour.durationDays} Days / ${tour.durationNights} Nights</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Travel Date</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${travelDate}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Guests</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${numGuests}</td></tr>
+                <tr><td style="padding:8px;"><strong>Total Price</strong></td><td style="padding:8px;"><strong>Rs. ${computedPrice}</strong></td></tr>
+              </table>
+              <p style="background:#fff8f0; border-left:4px solid #b56b2f; padding:12px; border-radius:4px;">
+                💵 <strong>Payment is accepted in cash on-site.</strong> Please bring this confirmation with you.
+              </p>
+              <p>We look forward to your trip!</p>
+              <p style="color:#888; font-size:0.85rem;">— Hotel Himalaya INN Team</p>
+            </div>
+          `;
+          await sendEmail(
+            bookedByEmail,
+            `✅ Tour Booking Confirmed – ${tour.title}`,
+            `You have successfully booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
+            guestHtml
+          );
+        } catch (guestEmailErr) {
+          console.error('[EMAIL-ERROR] Guest tour booking email failed:', guestEmailErr.message);
+        }
+      }
+
+      // 3. Admin notification email
+      try {
+        const details = {
           'Tour Name': tour.title,
           'Destination': tour.destination,
           'Duration': `${tour.durationDays} Days / ${tour.durationNights} Nights`,
@@ -193,15 +240,18 @@ const bookTour = async (req, res) => {
           'Email': bookedByEmail,
           'Phone': bookedByPhone || 'N/A',
           'Number of Guests': numGuests,
-          'Remaining Seats': tour.remainingSeats,
-          'Price Per Person': `Rs. ${tour.price - tour.discount}`,
           'Total Price': `Rs. ${computedPrice}`
-        }
-      });
-    } catch (e) {
-      console.error('Failed to queue admin tour booking notification:', e && e.message ? e.message : e);
-    }
-    res.status(201).json(booking);
+        };
+        const adminHtml = adminNotificationTemplate('tour_booking', details);
+        await sendAdminEmail(
+          `🏔️ New Tour Booking – ${tour.title}`,
+          `${bookedByName} booked ${numGuests} guest(s) for ${tour.title} on ${travelDate}.`,
+          adminHtml
+        );
+      } catch (adminEmailErr) {
+        console.error('[EMAIL-ERROR] Admin tour booking email failed:', adminEmailErr.message);
+      }
+    })().catch((bgErr) => console.error('[TOUR-BG-ERROR]', bgErr.message));
   } catch (error) {
     console.error('bookTour error:', error);
     res.status(500).json({ error: 'Failed to book tour' });

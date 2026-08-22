@@ -140,7 +140,7 @@ const bookEvent = async (req, res) => {
 
     // Try to extract user from token (optional auth)
     let userId = null;
-    const authHeader = req.headers.authorization;
+    const authHeader = req.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       try {
         const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
@@ -180,6 +180,7 @@ const bookEvent = async (req, res) => {
           title: `New Event Booking: ${event.title}`,
           message: `${booking.bookedByName} booked ${booking.ticketsCount} ticket(s) for ${event.title}`,
           link: `/admin/events/bookings/${booking._id}`,
+          bookingId: String(booking._id),
           details: {
             'Event Name': event.title,
             'Event Date': event.date || 'N/A',
