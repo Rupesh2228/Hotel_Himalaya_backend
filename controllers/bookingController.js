@@ -204,60 +204,63 @@ exports.createBooking = async (req, res) => {
 
     console.log(`[BOOKING-CREATED] Unique booking saved: ${bookingId}`);
 
-    // Create Persistent Notification + Socket.IO + Web Push
-    try {
-      await createAdminNotification({
-        type: 'BOOKING',
-        title: 'New Room Booking',
-        message: `${guestName} booked ${room.title}.`,
-        link: `/hh-cp-9f3m2q`,
-        bookingId: booking.bookingId
-      });
-    } catch (notifErr) {
-      console.error('[BOOKING-ERROR] Failed to process notifications:', notifErr.message);
-    }
-
-    // Nodemailer email alerts (Admin + Guest)
-    // Send email to Guest
-    try {
-      const emailHtml = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-          <h2>Booking Received</h2>
-          <p>Thank you for booking with our hotel.</p>
-          <p><strong>Booking ID:</strong> ${bookingId}</p>
-          <p><strong>Room:</strong> ${room.title}</p>
-          <p><strong>Check-in:</strong> ${checkIn}</p>
-          <p><strong>Check-out:</strong> ${checkOut}</p>
-          <p><strong>Guests:</strong> ${guests}</p>
-          <p><strong>Status:</strong> Pending</p>
-        </div>
-      `;
-      await sendEmail(guestEmail, 'Booking Received', `Booking ID: ${bookingId} status is Pending`, emailHtml);
-    } catch (guestEmailErr) {
-      console.error('[EMAIL-ERROR] Guest booking email failed:', guestEmailErr.message);
-    }
-
-    // Send email to Admin
-    try {
-      const details = {
-        'Booking ID': bookingId,
-        'Guest Name': guestName,
-        'Email': guestEmail,
-        'Phone': phone,
-        'Room': room.title,
-        'Check-in': checkIn,
-        'Check-out': checkOut,
-        'Guests': guests,
-        'Total Price': `NPR ${computedPrice}`,
-        'Status': 'Pending'
-      };
-      const adminHtml = adminNotificationTemplate('booking', details);
-      await sendAdminEmail(`🔔 New Room Booking - Booking #${bookingId}`, `New room booking received for ${room.title}.`, adminHtml);
-    } catch (adminEmailErr) {
-      console.error('[EMAIL-ERROR] Admin booking email failed:', adminEmailErr.message);
-    }
-
+    // Respond immediately to the client so UI updates instantly
     res.status(201).json(serializeBooking(booking));
+
+    // Process Notifications + Emails asynchronously in the background
+    (async () => {
+      // 1. Create Persistent Notification + Socket.IO + Web Push
+      try {
+        await createAdminNotification({
+          type: 'BOOKING',
+          title: 'New Room Booking',
+          message: `${guestName} booked ${room.title}.`,
+          link: `/hh-cp-9f3m2q`,
+          bookingId: booking.bookingId
+        });
+      } catch (notifErr) {
+        console.error('[BOOKING-ERROR] Failed to process notifications:', notifErr.message);
+      }
+
+      // 2. Nodemailer email alert to Guest
+      try {
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <h2>Booking Received</h2>
+            <p>Thank you for booking with our hotel.</p>
+            <p><strong>Booking ID:</strong> ${bookingId}</p>
+            <p><strong>Room:</strong> ${room.title}</p>
+            <p><strong>Check-in:</strong> ${checkIn}</p>
+            <p><strong>Check-out:</strong> ${checkOut}</p>
+            <p><strong>Guests:</strong> ${guests}</p>
+            <p><strong>Status:</strong> Pending</p>
+          </div>
+        `;
+        await sendEmail(guestEmail, 'Booking Received', `Booking ID: ${bookingId} status is Pending`, emailHtml);
+      } catch (guestEmailErr) {
+        console.error('[EMAIL-ERROR] Guest booking email failed:', guestEmailErr.message);
+      }
+
+      // 3. Nodemailer email alert to Admin
+      try {
+        const details = {
+          'Booking ID': bookingId,
+          'Guest Name': guestName,
+          'Email': guestEmail,
+          'Phone': phone,
+          'Room': room.title,
+          'Check-in': checkIn,
+          'Check-out': checkOut,
+          'Guests': guests,
+          'Total Price': `NPR ${computedPrice}`,
+          'Status': 'Pending'
+        };
+        const adminHtml = adminNotificationTemplate('booking', details);
+        await sendAdminEmail(`🔔 New Room Booking - Booking #${bookingId}`, `New room booking received for ${room.title}.`, adminHtml);
+      } catch (adminEmailErr) {
+        console.error('[EMAIL-ERROR] Admin booking email failed:', adminEmailErr.message);
+      }
+    })().catch((bgErr) => console.error('[BOOKING-BG-ERROR]', bgErr.message));
   } catch (error) {
     console.error('createBooking error:', error);
     res.status(500).json({ error: 'Failed to create booking' });

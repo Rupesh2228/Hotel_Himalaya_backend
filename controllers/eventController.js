@@ -166,93 +166,97 @@ const bookEvent = async (req, res) => {
     });
 
 
-    // Notify admin about the new event booking
-    try {
-      const totalTicketPrice = event.price * ticketCountNum;
-      
-      await createAdminNotification({
-        type: 'event_booking',
-        title: `New Event Booking: ${event.title}`,
-        message: `${booking.bookedByName} booked ${booking.ticketsCount} ticket(s) for ${event.title}`,
-        link: `/admin/events/bookings/${booking._id}`,
-        details: {
-          'Event Name': event.title,
-          'Event Date': event.date || 'N/A',
-          'Event Time': event.time || 'N/A',
-          'Location': event.location || 'N/A',
-          'Guest Name': booking.bookedByName,
-          'Email': booking.bookedByEmail || 'N/A',
-          'Phone': booking.bookedByPhone || 'N/A',
-          'Available Seats': event.availableSeats,
-          'Tickets Booked': booking.ticketsCount,
-          'Price Per Ticket': `Rs. ${event.price}`,
-          'Total Price': `Rs. ${totalTicketPrice}`
-        }
-      });
-    } catch (e) {
-      console.error('Failed to queue admin event booking notification:', e && e.message ? e.message : e);
-    }
+    // Respond immediately to guest
+    res.status(201).json(booking);
 
-    // Send confirmation email to guest
-    if (booking.bookedByEmail) {
+    // Run notifications and emails in background
+    (async () => {
+      // 1. Notify admin about the new event booking
       try {
         const totalTicketPrice = event.price * ticketCountNum;
-        const guestHtml = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
-            <h2 style="color: #b56b2f;">Event Booking Confirmed!</h2>
-            <p>Thank you for booking with Hotel Himalaya INN. Here are your booking details:</p>
-            <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
-              <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Event</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.title}</td></tr>
-              <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Date</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.date} at ${event.time}</td></tr>
-              <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Location</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.location}</td></tr>
-              <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Tickets</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${ticketCountNum}</td></tr>
-              <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Price Per Ticket</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">Rs. ${event.price}</td></tr>
-              <tr><td style="padding:8px;"><strong>Total Amount</strong></td><td style="padding:8px;"><strong>Rs. ${totalTicketPrice}</strong></td></tr>
-            </table>
-            <p style="background:#fff8f0; border-left:4px solid #b56b2f; padding:12px; border-radius:4px;">
-              💵 <strong>Payment is accepted in cash on-site.</strong> Please bring this confirmation with you.
-            </p>
-            <p>We look forward to seeing you at the event!</p>
-            <p style="color:#888; font-size:0.85rem;">— Hotel Himalaya INN Team</p>
-          </div>
-        `;
-        await sendEmail(
-          booking.bookedByEmail,
-          `✅ Event Booking Confirmed – ${event.title}`,
-          `You have successfully booked ${ticketCountNum} ticket(s) for ${event.title} on ${event.date}.`,
-          guestHtml
-        );
-      } catch (guestEmailErr) {
-        console.error('[EMAIL-ERROR] Guest event booking email failed:', guestEmailErr.message);
+        
+        await createAdminNotification({
+          type: 'event_booking',
+          title: `New Event Booking: ${event.title}`,
+          message: `${booking.bookedByName} booked ${booking.ticketsCount} ticket(s) for ${event.title}`,
+          link: `/admin/events/bookings/${booking._id}`,
+          details: {
+            'Event Name': event.title,
+            'Event Date': event.date || 'N/A',
+            'Event Time': event.time || 'N/A',
+            'Location': event.location || 'N/A',
+            'Guest Name': booking.bookedByName,
+            'Email': booking.bookedByEmail || 'N/A',
+            'Phone': booking.bookedByPhone || 'N/A',
+            'Available Seats': event.availableSeats,
+            'Tickets Booked': booking.ticketsCount,
+            'Price Per Ticket': `Rs. ${event.price}`,
+            'Total Price': `Rs. ${totalTicketPrice}`
+          }
+        });
+      } catch (e) {
+        console.error('Failed to queue admin event booking notification:', e && e.message ? e.message : e);
       }
-    }
 
-    // Send admin notification email
-    try {
-      const totalTicketPrice = event.price * ticketCountNum;
-      const details = {
-        'Event': event.title,
-        'Date': `${event.date} at ${event.time}`,
-        'Location': event.location || 'N/A',
-        'Guest Name': booking.bookedByName || 'N/A',
-        'Email': booking.bookedByEmail || 'N/A',
-        'Phone': booking.bookedByPhone || 'N/A',
-        'Tickets Booked': ticketCountNum,
-        'Price Per Ticket': `Rs. ${event.price}`,
-        'Total Amount': `Rs. ${totalTicketPrice}`,
-        'Seats Remaining': event.availableSeats
-      };
-      const adminHtml = adminNotificationTemplate('event_booking', details);
-      await sendAdminEmail(
-        `🎟️ New Event Booking – ${event.title}`,
-        `${booking.bookedByName} booked ${ticketCountNum} ticket(s) for ${event.title}.`,
-        adminHtml
-      );
-    } catch (adminEmailErr) {
-      console.error('[EMAIL-ERROR] Admin event booking email failed:', adminEmailErr.message);
-    }
+      // 2. Send confirmation email to guest
+      if (booking.bookedByEmail) {
+        try {
+          const totalTicketPrice = event.price * ticketCountNum;
+          const guestHtml = `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px;">
+              <h2 style="color: #b56b2f;">Event Booking Confirmed!</h2>
+              <p>Thank you for booking with Hotel Himalaya INN. Here are your booking details:</p>
+              <table style="width:100%; border-collapse: collapse; margin: 16px 0;">
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Event</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.title}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Date</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.date} at ${event.time}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Location</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${event.location}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Tickets</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">${ticketCountNum}</td></tr>
+                <tr><td style="padding:8px; border-bottom:1px solid #eee;"><strong>Price Per Ticket</strong></td><td style="padding:8px; border-bottom:1px solid #eee;">Rs. ${event.price}</td></tr>
+                <tr><td style="padding:8px;"><strong>Total Amount</strong></td><td style="padding:8px;"><strong>Rs. ${totalTicketPrice}</strong></td></tr>
+              </table>
+              <p style="background:#fff8f0; border-left:4px solid #b56b2f; padding:12px; border-radius:4px;">
+                💵 <strong>Payment is accepted in cash on-site.</strong> Please bring this confirmation with you.
+              </p>
+              <p>We look forward to seeing you at the event!</p>
+              <p style="color:#888; font-size:0.85rem;">— Hotel Himalaya INN Team</p>
+            </div>
+          `;
+          await sendEmail(
+            booking.bookedByEmail,
+            `✅ Event Booking Confirmed – ${event.title}`,
+            `You have successfully booked ${ticketCountNum} ticket(s) for ${event.title} on ${event.date}.`,
+            guestHtml
+          );
+        } catch (guestEmailErr) {
+          console.error('[EMAIL-ERROR] Guest event booking email failed:', guestEmailErr.message);
+        }
+      }
 
-    res.status(201).json(booking);
+      // 3. Send admin notification email
+      try {
+        const totalTicketPrice = event.price * ticketCountNum;
+        const details = {
+          'Event': event.title,
+          'Date': `${event.date} at ${event.time}`,
+          'Location': event.location || 'N/A',
+          'Guest Name': booking.bookedByName || 'N/A',
+          'Email': booking.bookedByEmail || 'N/A',
+          'Phone': booking.bookedByPhone || 'N/A',
+          'Tickets Booked': ticketCountNum,
+          'Price Per Ticket': `Rs. ${event.price}`,
+          'Total Amount': `Rs. ${totalTicketPrice}`,
+          'Seats Remaining': event.availableSeats
+        };
+        const adminHtml = adminNotificationTemplate('event_booking', details);
+        await sendAdminEmail(
+          `🎟️ New Event Booking – ${event.title}`,
+          `${booking.bookedByName} booked ${ticketCountNum} ticket(s) for ${event.title}.`,
+          adminHtml
+        );
+      } catch (adminEmailErr) {
+        console.error('[EMAIL-ERROR] Admin event booking email failed:', adminEmailErr.message);
+      }
+    })().catch((bgErr) => console.error('[EVENT-BG-ERROR]', bgErr.message));
   } catch (err) {
     console.error('bookEvent error:', err);
     res.status(500).json({ error: 'Failed to book event' });
