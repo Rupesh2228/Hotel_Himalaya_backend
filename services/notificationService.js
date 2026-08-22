@@ -11,7 +11,7 @@ const sendPushNotifications = async ({ title, message, link, bookingId }) => {
   }
   try {
     webpush.setVapidDetails(
-      process.env.VAPID_SUBJECT || 'mailto:admin@hotelhimalaya.com',
+      process.env.VAPID_SUBJECT || 'mailto:maharjan2228rupesh@gmail.com',
       process.env.VAPID_PUBLIC_KEY,
       process.env.VAPID_PRIVATE_KEY
     );
