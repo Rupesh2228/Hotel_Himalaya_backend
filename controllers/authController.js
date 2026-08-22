@@ -27,14 +27,10 @@ const { notifyAdminLogin } = require("../services/notificationService");
 
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-/** The one Google account allowed to access the administrator dashboard. */
+/** The Google account allowed to access the administrator dashboard. */
 const ADMIN_EMAIL = (
-  process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || ''
-).toLowerCase();
-
-if (!ADMIN_EMAIL) {
-  console.warn('[AUTH] WARNING: ADMIN_EMAIL/GOOGLE_ADMIN_EMAIL not configured. Admin access via Google Sign-In disabled.');
-}
+  process.env.ADMIN_EMAIL || process.env.GOOGLE_ADMIN_EMAIL || process.env.SMTP_EMAIL || 'maharjan2228rupesh@gmail.com'
+).toLowerCase().trim();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
