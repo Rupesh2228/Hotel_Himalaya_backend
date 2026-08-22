@@ -3,24 +3,25 @@ const User = require('../models/User');
 
 // Create Transporter dynamically to pick up any environment variable changes
 const getTransporter = () => {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587');
   const user = process.env.SMTP_EMAIL;
-  const pass = process.env.SMTP_PASSWORD;
+  // Strip whitespace from app password (Gmail app passwords sometimes have spaces)
+  const pass = (process.env.SMTP_PASSWORD || '').replace(/\s+/g, '');
 
-  if (!host || !user || !pass) {
-    console.warn('[EMAIL] SMTP host, email, or password environment variables not configured. Email service will run in MOCK mode.');
+  if (!user || !pass) {
+    console.warn('[EMAIL] SMTP email or password not configured. Email service will run in MOCK mode.');
     return null;
   }
 
   return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // true for 465, false for other ports
+    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
       user,
       pass
-    }
+    },
+    connectionTimeout: 10000
   });
 };
 
