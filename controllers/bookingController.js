@@ -58,11 +58,29 @@ const serializeBooking = (booking) => {
 exports.getBookings = async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, parseInt(req.query.limit) || 20);
+    const limit = Math.min(500, parseInt(req.query.limit) || 100);
     const skip = (page - 1) * limit;
     
-    const { status, date, search } = req.query;
+    const { status, date, search, bookedByEmail, bookedBy, email, guestEmail, deviceId } = req.query;
     const filter = {};
+
+    const targetEmail = bookedByEmail || guestEmail || email;
+    const targetOwner = bookedBy || deviceId;
+
+    if (targetEmail && targetOwner) {
+      filter.$or = [
+        { guestEmail: targetEmail },
+        { bookedByEmail: targetEmail },
+        { bookedBy: targetOwner }
+      ];
+    } else if (targetEmail) {
+      filter.$or = [
+        { guestEmail: targetEmail },
+        { bookedByEmail: targetEmail }
+      ];
+    } else if (targetOwner) {
+      filter.bookedBy = targetOwner;
+    }
 
     if (status) {
       filter.status = status;
@@ -73,11 +91,17 @@ exports.getBookings = async (req, res) => {
     }
 
     if (search) {
-      filter.$or = [
+      const searchCondition = [
         { guestName: { $regex: search, $options: 'i' } },
         { guestEmail: { $regex: search, $options: 'i' } },
         { bookingId: { $regex: search, $options: 'i' } }
       ];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchCondition }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchCondition;
+      }
     }
 
     const [bookings, total] = await Promise.all([
