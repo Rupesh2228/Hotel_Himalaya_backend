@@ -1,4 +1,7 @@
 const express = require('express');
+const { protect, isAdmin } = require('../middleware/authMiddleware');
+const validate = require('../middleware/validate');
+const { createBlogValidator, updateBlogValidator } = require('../validators/blog.validator');
 const {
   getBlogs,
   getBlogBySlug,
@@ -7,20 +10,18 @@ const {
   deleteBlog
 } = require('../controllers/blogController');
 
-const { protect, isAdmin } = require('../middleware/authMiddleware');
-
 const router = express.Router();
 
 router
   .route('/')
   .get(getBlogs)
-  .post(protect, isAdmin, createBlog);
+  .post(protect, isAdmin, createBlogValidator, validate, createBlog);
 
 router.route('/slug/:slug').get(getBlogBySlug);
 
 router
   .route('/:id')
-  .put(protect, isAdmin, updateBlog)
+  .put(protect, isAdmin, updateBlogValidator, validate, updateBlog)
   .delete(protect, isAdmin, deleteBlog);
 
 module.exports = router;
