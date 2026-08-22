@@ -64,19 +64,19 @@ exports.getBookings = async (req, res) => {
     const { status, date, search, bookedByEmail, bookedBy, email, guestEmail, deviceId } = req.query;
     const filter = {};
 
-    const targetEmail = bookedByEmail || guestEmail || email;
-    const targetOwner = bookedBy || deviceId;
+    const targetEmail = (bookedByEmail || guestEmail || email || '').trim();
+    const targetOwner = (bookedBy || deviceId || '').trim();
 
     if (targetEmail && targetOwner) {
       filter.$or = [
-        { guestEmail: targetEmail },
-        { bookedByEmail: targetEmail },
+        { guestEmail: { $regex: new RegExp(`^${targetEmail}$`, 'i') } },
+        { bookedByEmail: { $regex: new RegExp(`^${targetEmail}$`, 'i') } },
         { bookedBy: targetOwner }
       ];
     } else if (targetEmail) {
       filter.$or = [
-        { guestEmail: targetEmail },
-        { bookedByEmail: targetEmail }
+        { guestEmail: { $regex: new RegExp(`^${targetEmail}$`, 'i') } },
+        { bookedByEmail: { $regex: new RegExp(`^${targetEmail}$`, 'i') } }
       ];
     } else if (targetOwner) {
       filter.bookedBy = targetOwner;
@@ -121,13 +121,10 @@ exports.getBookings = async (req, res) => {
 
 exports.getBookingById = async (req, res) => {
   try {
-    const { id } = req.params;
-    const booking = await Booking.findOne({ $or: [{ _id: id }, { bookingId: id }] });
+    const booking = await Booking.findById(req.params.id);
     if (!booking) {
       return res.status(404).json({ error: 'Booking not found' });
     }
-    // Simple privacy check for guests: if not logged in, anyone with ID can view,
-    // but we omit critical user information if we need to. For guests, showing checkIn/checkOut is fine.
     res.json(serializeBooking(booking));
   } catch (error) {
     console.error('getBookingById error:', error);
@@ -140,13 +137,14 @@ exports.createBooking = async (req, res) => {
     // Support both new field names and legacy field names
     const roomId = req.body.roomId;
     const guestName = req.body.guestName || req.body.bookedByName;
-    const guestEmail = req.body.guestEmail || req.body.bookedByEmail;
+    const guestEmail = (req.body.guestEmail || req.body.bookedByEmail || '').toLowerCase().trim();
     const phone = req.body.phone;
     const checkIn = req.body.checkIn;
     const checkOut = req.body.checkOut;
     const guests = req.body.guests || req.body.members;
     const specialRequest = req.body.specialRequest || '';
     const address = req.body.address || 'Guest Stay';
+    const bookedBy = req.body.bookedBy || req.body.deviceId || (req.user ? req.user._id : 'guest');
 
     if (!roomId || !guestName || !guestEmail || !phone || !checkIn || !checkOut || !guests) {
       return res.status(400).json({ error: 'Required fields: roomId, guestName, guestEmail, phone, checkIn, checkOut, guests' });
@@ -219,7 +217,7 @@ exports.createBooking = async (req, res) => {
       totalMembers: room.totalMembers || 2,
       members: Number(guests),
       verificationCode,
-      bookedBy: 'guest',
+      bookedBy,
       bookedByName: guestName,
       bookedByEmail: guestEmail,
       address: address || 'Guest Stay',
