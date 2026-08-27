@@ -1,6 +1,6 @@
 const Blog = require('../models/Blog');
 const asyncHandler = require('../utils/asyncHandler');
-const ErrorResponse = require('../utils/errorHandler');
+const { AppError: ErrorResponse } = require('../utils/errorHandler');
 
 // @desc    Get all blogs
 // @route   GET /api/blogs

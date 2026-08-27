@@ -61,9 +61,10 @@ const bookingValidator = [
     .custom((value) => {
       const checkIn = new Date(value);
       checkIn.setHours(0, 0, 0, 0);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      if (checkIn < today) {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setHours(0, 0, 0, 0);
+      if (checkIn < yesterday) {
         throw new Error('Check-in date cannot be in the past');
       }
       return true;

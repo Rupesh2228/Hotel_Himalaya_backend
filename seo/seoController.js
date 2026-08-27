@@ -1,6 +1,6 @@
 const SEO = require('./SEO');
 const asyncHandler = require('../utils/asyncHandler');
-const ErrorResponse = require('../utils/errorHandler');
+const { AppError: ErrorResponse } = require('../utils/errorHandler');
 
 const slugify = (value) => String(value || '')
   .trim()

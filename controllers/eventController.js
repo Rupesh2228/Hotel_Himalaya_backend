@@ -5,7 +5,7 @@ const { sendEmail, sendAdminEmail } = require('../services/email.service');
 const adminNotificationTemplate = require('../templates/adminNotification.template');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const JWT_SECRET = process.env.JWT_SECRET || 'dev_hotel_jwt_secret';
+const { JWT_SECRET } = require('../config/jwt.config');
 
 const EVENT_DEFAULT_DURATION_MINUTES = 240;
 

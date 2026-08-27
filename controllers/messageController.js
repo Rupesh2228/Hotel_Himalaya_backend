@@ -1,5 +1,7 @@
 const Message = require('../models/Message');
 const { createAdminNotification } = require('../services/notificationService');
+const { sendAdminEmail } = require('../services/email.service');
+const adminNotificationTemplate = require('../templates/adminNotification.template');
 
 exports.createMessage = async (req, res) => {
   try {
@@ -16,28 +18,42 @@ exports.createMessage = async (req, res) => {
       message: message.trim(),
     });
 
+    // Respond immediately to the client
+    res.status(201).json({ message: 'Message sent successfully', data: newMessage });
 
-    // Create admin notification (DB + Email)
-    try {
-      await createAdminNotification({
-        type: 'message',
-        title: `New Contact Message from ${newMessage.name}`,
-        message: `${newMessage.name} (${newMessage.email}) sent a new message.`,
-        link: `/admin/messages/${newMessage._id}`,
-        sendEmail: true,
-        details: {
+    // Run notifications and emails in background
+    (async () => {
+      // 1. Admin push/socket notification
+      try {
+        await createAdminNotification({
+          type: 'message',
+          title: `New Contact Message from ${newMessage.name}`,
+          message: `${newMessage.name} (${newMessage.email}) sent a new message.`,
+          link: `/admin/messages/${newMessage._id}`,
+        });
+      } catch (e) {
+        console.error('Failed to queue admin message notification:', e && e.message ? e.message : e);
+      }
+
+      // 2. Admin notification email
+      try {
+        const details = {
           'Sender Name': newMessage.name,
           'Email Address': newMessage.email,
           'Phone Number': newMessage.phone || 'N/A',
           'Message': newMessage.message,
           'Submitted At': new Date(newMessage.createdAt).toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' })
-        }
-      });
-    } catch (e) {
-      console.error('Failed to queue admin message notification:', e && e.message ? e.message : e);
-    }
-
-    res.status(201).json({ message: 'Message sent successfully', data: newMessage });
+        };
+        const adminHtml = adminNotificationTemplate('message', details);
+        await sendAdminEmail(
+          `📩 New Contact Message from ${newMessage.name}`,
+          `${newMessage.name} (${newMessage.email}) sent a contact message: ${newMessage.message.slice(0, 200)}`,
+          adminHtml
+        );
+      } catch (adminEmailErr) {
+        console.error('[EMAIL-ERROR] Admin contact message email failed:', adminEmailErr.message);
+      }
+    })().catch((bgErr) => console.error('[MESSAGE-BG-ERROR]', bgErr.message));
   } catch (error) {
     console.error('createMessage error:', error);
     res.status(500).json({ error: 'Failed to send message' });

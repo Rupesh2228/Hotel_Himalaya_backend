@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
+const { JWT_SECRET } = require('./jwt.config');
 const User = require('../models/User');
 
 let io = null;
@@ -32,7 +33,7 @@ const initSocket = (server) => {
         // Verify JWT
         let decoded;
         try {
-          decoded = jwt.verify(token, process.env.JWT_SECRET);
+          decoded = jwt.verify(token, JWT_SECRET);
         } catch (jwtErr) {
           socket.emit('admin_room_error', { message: 'Invalid or expired token' });
           console.warn('[SOCKET] join_admin_room denied — JWT invalid. Socket:', socket.id, jwtErr.message);

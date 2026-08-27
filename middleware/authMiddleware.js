@@ -3,7 +3,7 @@ const User = require("../models/User");
 const { AppError } = require("../utils/errorHandler");
 const asyncHandler = require("../utils/asyncHandler");
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev_hotel_jwt_secret";
+const { JWT_SECRET } = require("../config/jwt.config");
 
 /**
  * protect — verifies JWT from Authorization Bearer header OR httpOnly cookie.

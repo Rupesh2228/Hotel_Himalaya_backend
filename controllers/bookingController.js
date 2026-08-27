@@ -152,9 +152,10 @@ exports.createBooking = async (req, res) => {
 
     // Date validations
     const checkInDate = parseDate(checkIn);
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    if (!checkInDate || checkInDate < today) {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(0, 0, 0, 0);
+    if (!checkInDate || checkInDate < yesterday) {
       return res.status(400).json({ error: 'Check-in date cannot be in the past' });
     }
 

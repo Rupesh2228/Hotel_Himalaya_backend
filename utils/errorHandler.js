@@ -80,4 +80,5 @@ const globalErrorHandler = (err, req, res, next) => {
   });
 };
 
-module.exports = { AppError, globalErrorHandler };
+module.exports = { AppError, ErrorResponse: AppError, globalErrorHandler };
+

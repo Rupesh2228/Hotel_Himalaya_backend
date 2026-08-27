@@ -1,6 +1,6 @@
 const Attraction = require('../models/Attraction');
 const asyncHandler = require('../utils/asyncHandler');
-const ErrorResponse = require('../utils/errorHandler');
+const { AppError: ErrorResponse } = require('../utils/errorHandler');
 
 // @desc    Get all attractions
 // @route   GET /api/attractions

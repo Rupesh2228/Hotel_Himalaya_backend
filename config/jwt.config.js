@@ -46,4 +46,5 @@ const sendTokenResponse = (res, token, user, status = 200) => {
     .json({ status: "success", token, user });
 };
 
-module.exports = { signToken, verifyToken, sendTokenResponse };
+module.exports = { JWT_SECRET, signToken, verifyToken, sendTokenResponse };
+

@@ -12,6 +12,22 @@ const getMidnight = (date = new Date()) => {
 
 const parseDate = (value) => {
   if (!value) return null;
+  if (typeof value === 'string' && value.includes('/')) {
+    const parts = value.split('/');
+    if (parts.length === 3) {
+      if (parts[2].length === 4) {
+        // DD/MM/YYYY
+        const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        d.setHours(0, 0, 0, 0);
+        return d;
+      } else if (parts[0].length === 4) {
+        // YYYY/MM/DD
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        d.setHours(0, 0, 0, 0);
+        return d;
+      }
+    }
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   date.setHours(0, 0, 0, 0);
