@@ -45,7 +45,7 @@ app.use("/uploads", express.static(uploadsDir));
 // ── Security middleware ────────────────────────────────────────────────────────
 app.use(
   helmet({
-    crossOriginOpenerPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
