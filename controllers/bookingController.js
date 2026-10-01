@@ -339,36 +339,114 @@ exports.updateBookingStatus = async (req, res) => {
     // Send emails on material updates (Confirmed / Cancelled)
     if (status === 'Confirmed') {
       try {
-        const confirmHtml = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <h2>Your Booking Has Been Confirmed</h2>
-            <p><strong>Booking ID:</strong> ${booking.bookingId}</p>
-            <p><strong>Room:</strong> ${booking.roomName || booking.roomTitle}</p>
-            <p><strong>Check-in:</strong> ${booking.checkIn}</p>
-            <p><strong>Check-out:</strong> ${booking.checkOut}</p>
-            <p><strong>Status:</strong> Confirmed</p>
-            <p>We look forward to hosting you!</p>
-          </div>
-        `;
-        await sendEmail(booking.guestEmail, 'Your Booking Has Been Confirmed', `Booking ${booking.bookingId} is now Confirmed`, confirmHtml);
+        const details = {
+          guestName: booking.guestName,
+          bookingId: booking.bookingId,
+          roomTitle: booking.roomName || booking.roomTitle || 'Room',
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          members: booking.guests || booking.members || booking.totalMembers || 1,
+          price: booking.totalPrice || booking.roomPrice || 0,
+          verificationCode: booking.verificationCode || ''
+        };
+        const confirmHtml = bookingTemplate(details);
+
+        // 1. Deliver confirmation to Guest
+        await sendEmail(
+          booking.guestEmail,
+          `✅ Booking Confirmed - #${booking.bookingId} | Hotel Himalaya INN`,
+          `Your booking ${booking.bookingId} has been confirmed.`,
+          confirmHtml
+        );
+
+        // 2. Deliver confirmation copy to logged-in admin & designated admin emails
+        const adminDetails = {
+          'Booking ID': booking.bookingId,
+          'Guest Name': booking.guestName,
+          'Email': booking.guestEmail,
+          'Phone': booking.phone || 'N/A',
+          'Room': booking.roomName || booking.roomTitle || 'Room',
+          'Check-in': booking.checkIn,
+          'Check-out': booking.checkOut,
+          'Total Amount': `NPR ${booking.totalPrice || booking.roomPrice || 0}`,
+          'Confirmed By': req.user?.name ? `${req.user.name} (${req.user.email})` : (booking.verifiedBy || 'Admin'),
+          'Status': 'Confirmed'
+        };
+        const adminConfirmHtml = adminNotificationTemplate('booking', adminDetails);
+
+        // Send to currently logged-in admin directly if available
+        if (req.user?.email && req.user.email.toLowerCase() !== (booking.guestEmail || '').toLowerCase()) {
+          await sendEmail(
+            req.user.email,
+            `📋 [Admin Copy] Booking #${booking.bookingId} Confirmed`,
+            `Booking #${booking.bookingId} for ${booking.guestName} was confirmed.`,
+            adminConfirmHtml
+          );
+        }
+
+        // Send to all administrators
+        await sendAdminEmail(
+          `✅ Booking #${booking.bookingId} Confirmed`,
+          `Booking #${booking.bookingId} for ${booking.guestName} was confirmed by ${req.user?.name || 'Admin'}.`,
+          adminConfirmHtml,
+          req.user?.email
+        );
       } catch (e) {
-        console.error('[EMAIL-ERROR] Confirm guest email failed:', e.message);
+        console.error('[EMAIL-ERROR] Confirm email delivery failed:', e.message);
       }
     } else if (status === 'Cancelled') {
       try {
         const cancelHtml = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-            <h2>Your Booking Has Been Cancelled</h2>
-            <p><strong>Booking ID:</strong> ${booking.bookingId}</p>
+          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 8px; padding: 24px;">
+            <h2 style="color: #dc2626; margin-top: 0;">Booking Cancelled</h2>
+            <p>Dear <strong>${booking.guestName}</strong>,</p>
+            <p>Your reservation <strong>${booking.bookingId}</strong> has been cancelled.</p>
             <p><strong>Room:</strong> ${booking.roomName || booking.roomTitle}</p>
             <p><strong>Check-in:</strong> ${booking.checkIn}</p>
             <p><strong>Check-out:</strong> ${booking.checkOut}</p>
-            <p><strong>Status:</strong> Cancelled</p>
+            <p style="margin-top: 20px; font-size: 14px; color: #666;">If you believe this cancellation was made in error or have questions, please contact our support.</p>
+            <p>— Hotel Himalaya INN Team</p>
           </div>
         `;
-        await sendEmail(booking.guestEmail, 'Your Booking Has Been Cancelled', `Booking ${booking.bookingId} is Cancelled`, cancelHtml);
+
+        // 1. Deliver cancellation to Guest
+        await sendEmail(
+          booking.guestEmail,
+          `⚠️ Booking Cancelled - #${booking.bookingId} | Hotel Himalaya INN`,
+          `Booking ${booking.bookingId} has been cancelled.`,
+          cancelHtml
+        );
+
+        // 2. Deliver cancellation alert to logged-in admin & administrators
+        const adminCancelDetails = {
+          'Booking ID': booking.bookingId,
+          'Guest Name': booking.guestName,
+          'Email': booking.guestEmail,
+          'Room': booking.roomName || booking.roomTitle || 'Room',
+          'Check-in': booking.checkIn,
+          'Check-out': booking.checkOut,
+          'Cancelled By': req.user?.name ? `${req.user.name} (${req.user.email})` : 'Admin',
+          'Status': 'Cancelled'
+        };
+        const adminCancelHtml = adminNotificationTemplate('booking', adminCancelDetails);
+
+        if (req.user?.email && req.user.email.toLowerCase() !== (booking.guestEmail || '').toLowerCase()) {
+          await sendEmail(
+            req.user.email,
+            `⚠️ [Admin Copy] Booking #${booking.bookingId} Cancelled`,
+            `Booking #${booking.bookingId} for ${booking.guestName} was cancelled.`,
+            adminCancelHtml
+          );
+        }
+
+        await sendAdminEmail(
+          `⚠️ Booking #${booking.bookingId} Cancelled`,
+          `Booking #${booking.bookingId} was cancelled by ${req.user?.name || 'Admin'}.`,
+          adminCancelHtml,
+          req.user?.email
+        );
       } catch (e) {
-        console.error('[EMAIL-ERROR] Cancel guest email failed:', e.message);
+        console.error('[EMAIL-ERROR] Cancel email delivery failed:', e.message);
       }
     }
 

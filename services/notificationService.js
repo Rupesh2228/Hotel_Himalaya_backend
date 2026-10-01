@@ -3,6 +3,8 @@ const PushSubscription = require('../models/PushSubscription');
 const User = require('../models/User');
 const webpush = require('web-push');
 const { emitToAdmins } = require('../config/socket');
+const adminLoginNotificationTemplate = require('../templates/adminLogin.template');
+const { sendEmail, sendAdminEmail } = require('./email.service');
 
 const sendPushNotifications = async ({ title, message, link, bookingId }) => {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
@@ -95,10 +97,26 @@ const createAdminNotification = async ({ type, title, message, link, bookingId, 
 };
 
 /**
- * Admin login notification
+ * Admin login notification email delivery
  */
 const notifyAdminLogin = async ({ adminName, adminEmail, loginDetails }) => {
   console.log(`[ADMIN-LOGIN] Admin logged in: ${adminName} (${adminEmail})`);
+  try {
+    const details = loginDetails || {
+      'Login Time': new Date().toLocaleString('en-NP', { timeZone: 'Asia/Kathmandu' }),
+      'Status': 'Successful'
+    };
+    const html = adminLoginNotificationTemplate(adminName || 'Admin', adminEmail, details);
+    const subject = `🔐 Security Alert: Admin Login Detected (${adminName || 'Admin'})`;
+    const text = `Admin login detected for ${adminName || 'Admin'} (${adminEmail}). Time: ${details['Login Time'] || new Date().toISOString()}`;
+
+    // Deliver email directly to the admin who just logged in
+    if (adminEmail && adminEmail.includes('@')) {
+      await sendEmail(adminEmail.trim(), subject, text, html);
+    }
+  } catch (err) {
+    console.error('[ADMIN-LOGIN-EMAIL-ERROR] Failed to send login email:', err && err.message ? err.message : err);
+  }
 };
 
 module.exports = { createAdminNotification, notifyAdminLogin, sendPushNotifications };

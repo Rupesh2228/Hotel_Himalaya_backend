@@ -72,15 +72,20 @@ const sendEmail = async (to, subject, text, html) => {
 /**
  * Send an email to all approved administrators in the database.
  */
-const sendAdminEmail = async (subject, text, html) => {
+const sendAdminEmail = async (subject, text, html, currentAdminEmail = null) => {
   try {
     // Find all approved admins (role: 'admin')
     const approvedAdmins = await User.find({ role: 'admin' }).select('email');
-    const adminEmails = (approvedAdmins || []).map(admin => admin.email?.trim()).filter(Boolean);
+    const adminEmails = (approvedAdmins || []).map(admin => admin.email?.trim().toLowerCase()).filter(Boolean);
 
-    if (process.env.ADMIN_EMAIL && !adminEmails.includes(process.env.ADMIN_EMAIL.trim())) {
-      adminEmails.push(process.env.ADMIN_EMAIL.trim());
-    }
+    [process.env.ADMIN_EMAIL, process.env.GOOGLE_ADMIN_EMAIL, process.env.SMTP_EMAIL, currentAdminEmail].forEach(email => {
+      if (email && typeof email === 'string') {
+        const clean = email.trim().toLowerCase();
+        if (clean && !adminEmails.includes(clean)) {
+          adminEmails.push(clean);
+        }
+      }
+    });
 
     if (adminEmails.length === 0) {
       console.warn('[EMAIL-WARNING] No approved admins found. Admin email notification skipped.');

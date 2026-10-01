@@ -1,6 +1,6 @@
 require('dotenv').config();
-const { notifyAdminLogin } = require('./services/notificationService');
-const { connectDB } = require('./db');
+const { notifyAdminLogin } = require('../services/notificationService');
+const { connectDB } = require('../db');
 
 async function testAdminLoginNotification() {
   try {
